@@ -20,11 +20,10 @@ isBdNode = mesh.ds.boundary_node_flag()
 duration = pde.duration()
 nt = 3200 
 tau = (duration[1] - duration[0])/nt 
-
+print("网比r:", tau/(hx**2))
 uh0 = mesh.interpolate(pde.init_solution, intertype='node')
 
-
-def advance_forward(n):
+def advance_forward(n, *frags):
     """
     @brief 时间步进格式为向前欧拉方法
 
@@ -97,5 +96,10 @@ def advance_crank_nicholson(n):
 
 fig, axes = plt.subplots()
 box = [0, 1, -1.5, 1.5] # 图像显示的范围 0 <= x <= 1, -1.5 <= y <= 1.5
-mesh.show_animation(fig, axes, box, advance_forward, frames=nt + 1)
+def init_callback():
+    # 调用 advance(0) 获取初始解
+    uh0, _ = advance_forward(0)
+    return uh0
+
+mesh.show_animation(fig, axes, box, advance_forward, init=init_callback, frames=nt + 1)
 plt.show()

@@ -46,7 +46,7 @@ class LinearElasticityOperatorIntegrator:
         A = [np.einsum('i, ijm, ijn, j->jmn', ws, grad[..., i], grad[..., j], cellmeasure, optimize=True) for i, j in idx]
 
         D = mu*np.sum(A)
-        if space[0].doforder == 'nodes': # 先按节点顺序排 x 分量，再依次排 y、z 分量
+        if space[0].doforder == 'sdofs': # 标量自由度优先排序 
             for i in range(GD):
                 for j in range(i, GD):
                     if i == j:
@@ -55,7 +55,7 @@ class LinearElasticityOperatorIntegrator:
                     else:
                         K[:, i*ldof:(i+1)*ldof, j*ldof:(j+1)*ldof] += lam*A[imap[(i, j)]] 
                         K[:, i*ldof:(i+1)*ldof, j*ldof:(j+1)*ldof] += mu*A[imap[(i, j)]].transpose(0, 2, 1)
-                        K[:, j*ldof:(j+1)*ldof, i*ldof:(i+1)*ldof] += lam*A[imap[(i, j)]].tranpose(0, 2, 1)
+                        K[:, j*ldof:(j+1)*ldof, i*ldof:(i+1)*ldof] += lam*A[imap[(i, j)]].transpose(0, 2, 1)
                         K[:, j*ldof:(j+1)*ldof, i*ldof:(i+1)*ldof] += mu*A[imap[(i, j)]]
         elif space[0].doforder == 'vdims':
             for i in range(GD):
@@ -66,7 +66,7 @@ class LinearElasticityOperatorIntegrator:
                     else:
                         K[:, i::GD, j::GD] += lam*A[imap[(i, j)]] 
                         K[:, i::GD, j::GD] += mu*A[imap[(i, j)]].transpose(0, 2, 1)
-                        K[:, j::GD, i::GD] += lam*A[imap[(i, j)]].tranpose(0, 2, 1)
+                        K[:, j::GD, i::GD] += lam*A[imap[(i, j)]].transpose(0, 2, 1)
                         K[:, j::GD, i::GD] += mu*A[imap[(i, j)]]
         if out is None:
             return K

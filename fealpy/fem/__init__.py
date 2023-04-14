@@ -12,12 +12,15 @@ from .TrussStructureIntegrator import TrussStructureIntegrator
 from .MassIntegrator import MassIntegrator
 from .DiffusionIntegrator import DiffusionIntegrator
 from .ConvectionIntegrator import ConvectionIntegrator
+from .LinearElasticityOperatorIntegrator import LinearElasticityOperatorIntegrator
 
 from .ProvidesSymmetricTangentOperatorIntegrator import ProvidesSymmetricTangentOperatorIntegrator
 
 
 from .LinearForm import LinearForm
 from .SourceIntegrator import SourceIntegrator
+from .ScalarSourceIntegrator import ScalarSourceIntegrator
+from .VectorSourceIntegrator import VectorSourceIntegrator
 
 
 from .DirichletBC import DirichletBC

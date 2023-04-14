@@ -258,8 +258,7 @@ class TriangleMesh(Mesh2d):
             self.node = np.concatenate((node, newNode), axis=0)
             p = np.r_['-1', cell, edge2newNode[cell2edge]]
             cell = np.r_['0', p[:, [0, 5, 4]], p[:, [5, 1, 3]], p[:, [4, 3, 2]], p[:, [3, 4, 5]]]
-            NN = self.node.shape[0]
-            self.ds.reinit(NN, cell)
+            self.ds.reinit(NN+NE, cell)
 
         if returnim:
             return nodeIMatrix, cellIMatrix
@@ -337,6 +336,19 @@ class TriangleMesh(Mesh2d):
                     node[cell, :]).reshape(-1, GD)
         return ipoints
 
+    def face_to_ipoint(self, p):
+        """
+        @brief 获取网格边与插值点的对应关系
+        """
+        NF = self.number_of_faces()
+        NN = self.number_of_nodes()
+
+        face = self.entity('face')
+        face2ipoints = np.zeros((NF, p+1), dtype=np.int_)
+        face2ipoints[:, [0, -1]] = face 
+        if p > 1:
+            face2ipoints[:, 1:-1] = NN + np.arange(NF*(p-1)).reshape(NF, p-1)
+        return face2ipoints
 
     def edge_to_ipoint(self, p):
         """
