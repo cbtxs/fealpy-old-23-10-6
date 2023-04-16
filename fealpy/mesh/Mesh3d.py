@@ -109,14 +109,14 @@ class Mesh3d(Mesh):
             mapper = cm.ScalarMappable(norm=norm, cmap='rainbow')
             nodecolor = mapper.to_rgba(nodecolor)
 
-        node = self.node
+        node = self.entity("node")
         if shownode:
             axes.scatter(
                     node[:, 0], node[:, 1], node[:, 2],
                     color=nodecolor, s=markersize)
 
         if showedge:
-            edge = self.ds.edge
+            edge = self.entity("edge")
             vts = node[edge]
             edges = a3.art3d.Line3DCollection(
                    vts,
@@ -126,6 +126,7 @@ class Mesh3d(Mesh):
 
         face = self.entity('face')
         isBdFace = self.ds.boundary_face_flag()
+        print(np.where(isBdFace))
         if threshold is None:
             face = face[isBdFace][:, self.ds.ccw]
         else:
@@ -136,6 +137,8 @@ class Mesh3d(Mesh):
             isBdFace = (np.sum(isKeepCell[face2cell[:, 0:2]], axis=-1) == 2) & isBdFace
             face = face[isBdFace | isInterfaceFace][:, self.ds.ccw]
 
+        print(face)
+        import mpl_toolkits.mplot3d as a3
         faces = a3.art3d.Poly3DCollection(
                 node[face],
                 facecolor=facecolor,
