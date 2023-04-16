@@ -171,7 +171,6 @@ class Mesh2d(Mesh):
             axes = fig.gca()
         else:
             axes = plot
-
         GD = self.geo_dimension()
         if (aspect is None) and (GD == 3):
             axes.set_box_aspect((1, 1, 1))
@@ -314,6 +313,14 @@ class Mesh2dDataStructure():
                 axis=0)
         NE = i0.shape[0]
         self.NE = NE
+
+        ########## 以下代码用于测试 openfinite 中的代码，可以删除 ########
+        #idx = np.argsort(i0)
+        #idx_inverse = np.zeros_like(idx)
+        #idx_inverse[idx] = np.arange(len(idx))
+        #i0 = i0[idx]
+        #j = idx_inverse[j]
+        ##################################################################
 
         self.edge2cell = np.zeros((NE, 4), dtype=self.itype)
 
