@@ -142,7 +142,7 @@ class FirstNedelecFiniteElementSpace2d:
         -----
         """
 
-        # 每个单元上的全部自由度个数
+                # 每个单元上的全部自由度个数
         ldof = self.number_of_local_dofs(doftype='all')
         edof = self.number_of_local_dofs(doftype='edge')
 
@@ -460,6 +460,9 @@ class FirstNedelecFiniteElementSpace2d:
         gdof = self.number_of_global_dofs()
         b = self.integralalg.construct_vector_v_v(f, self.basis, cell2dof, gdof=gdof)
         return b
+
+    def face_mass_matrix(self):
+        pass
 
     def set_dirichlet_bc(self, gD, uh, threshold=None, q=None):
         """
