@@ -22,22 +22,22 @@ class SimplexMeshCLFEDof():
                 index = index[flag]
 
         gdof = self.number_of_global_dofs()
-        face2dof = self.face_to_dof()
+        face2dof = self.face_to_dof(index=index) # 只获取指定的面的自由度信息
         isBdDof = np.zeros(gdof, dtype=np.bool_)
-        isBdDof[face2dof[index]] = True
+        isBdDof[face2dof] = True
         return isBdDof
 
     def face_to_dof(self, index=np.s_[:]):
-        return self.mesh.face_to_ipoint(self.p)
+        return self.mesh.face_to_ipoint(self.p, index=index)
 
     def edge_to_dof(self, index=np.s_[:]):
-        return self.mesh.edge_to_ipoint(self.p)
+        return self.mesh.edge_to_ipoint(self.p, index=index)
 
     def cell_to_dof(self, index=np.s_[:]):
-        return self.mesh.cell_to_ipoint(self.p)
+        return self.mesh.cell_to_ipoint(self.p, index=index)
 
     def interpolation_points(self):
-        return self.mesh.interpolation_points(self.p)
+        return self.mesh.interpolation_points(self.p, index=index)
 
     def number_of_global_dofs(self):
         return self.mesh.number_of_global_ipoints(self.p)
@@ -372,7 +372,7 @@ class LagrangeFESpace():
             mesh, 
             p: int=1, 
             spacetype: str='C', 
-            doforder: str='vdims'):
+            doforder: str='sdofs'):
         """
         @brief Initialize the Lagrange finite element space.
 
@@ -444,6 +444,13 @@ class LagrangeFESpace():
     @barycentric
     def grad_basis(self, bc, index=np.s_[:]):
         return self.mesh.grad_shape_function(bc, p=self.p, index=index)
+    
+    @barycentric
+    def face_basis(self, bc):
+        """
+        @brief 计算 face 上的基函数在给定积分点处的函数值
+        """
+        pass
 
     @barycentric
     def value(self, 
@@ -540,7 +547,7 @@ class LagrangeFESpace():
         ipoints = self.interpolation_points() # TODO: 直接获取过滤后的插值点
         isDDof = self.is_boundary_dof(threshold=threshold)
 
-        if callable(gD):
+        if callable(gD): 
             gD = gD(ipoints[isDDof])
 
 
@@ -563,6 +570,7 @@ class LagrangeFESpace():
                 shape = isDDof.shape + (len(uh.shape)-1)*(1, )
             isDDof = np.broadcast_to(isDDof.reshape(shape), shape=uh.shape) 
         return isDDof
+
 
     def function(self, dim=None, array=None, dtype=np.float64):
         return Function(self, dim=dim, array=array, 

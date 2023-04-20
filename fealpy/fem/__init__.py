@@ -16,6 +16,7 @@ from .ScalarSourceIntegrator import ScalarSourceIntegrator
 
 # Integrator for vector case
 from .VectorSourceIntegrator import VectorSourceIntegrator
+from .VectorDiffusionIntegrator import VectorDiffusionIntegrator
 
 from .TrussStructureIntegrator import TrussStructureIntegrator
 from .DiffusionIntegrator import DiffusionIntegrator
@@ -24,6 +25,8 @@ from .LinearElasticityOperatorIntegrator import LinearElasticityOperatorIntegrat
 
 from .ProvidesSymmetricTangentOperatorIntegrator import ProvidesSymmetricTangentOperatorIntegrator
 
+from .VectorNeumannBoundaryIntegrator import VectorNeumannBoundaryIntegrator
+from .ScalarNeumannBoundaryIntegrator import ScalarNeumannBoundaryIntegrator
 
 from .DirichletBC import DirichletBC
 

@@ -1,23 +1,24 @@
 import numpy as np
 
 class LinearElasticityOperatorIntegrator:
-    def __init__(self, lam, mu, q=3):
+    def __init__(self, lam, mu, q=None):
         self.lam = lam
         self.mu = mu
-        self.q = q
+        self.q = q 
 
     def assembly_cell_matrix(self, space, index=np.s_[:], cellmeasure=None, out=None):
         """
         construct the linear elasticity fem matrix
         """
 
-        q = self.q
         lam = self.lam
         mu = self.mu
-
-        GD = len(space) 
         mesh = space[0].mesh
         ldof = space[0].number_of_local_dofs()
+        p = space[0].p
+        GD = mesh.geo_dimension()
+        q = self.q if self.q is not None else p+1
+
 
         if cellmeasure is None:
             cellmeasure = mesh.entity_measure('cell', index=index)
@@ -45,7 +46,10 @@ class LinearElasticityOperatorIntegrator:
 
         A = [np.einsum('i, ijm, ijn, j->jmn', ws, grad[..., i], grad[..., j], cellmeasure, optimize=True) for i, j in idx]
 
-        D = mu*np.sum(A)
+        D = 0
+        for i in range(GD):
+            D += mu*A[imap[(i, i)]]
+        
         if space[0].doforder == 'sdofs': # 标量自由度优先排序 
             for i in range(GD):
                 for j in range(i, GD):
