@@ -5,7 +5,13 @@ import sympy as sym
 from sympy.vector import CoordSys3D, Del, curl
 
 class MaxwellPDE():
-    def __init__(self, f):
+        """
+        @brief 求解方程 
+                             curl curl E - beta E = J     Omega
+                                       n \times E = g     Gamma0
+                 n \times (curl E + k n \times E) = f     Gamma1
+        """
+    def __init__(self, f, beta=1, k=1):
         C = CoordSys3D('C')
         x = sym.symbols("x")
         y = sym.symbols("y")
@@ -31,13 +37,15 @@ class MaxwellPDE():
 
         # 构造 curl(curl(f))
         ccf = curl(cf)
-        print(ccf)
         ccfx = ccf.dot(C.i).subs({C.x:x, C.y:y, C.z:z})
         ccfy = ccf.dot(C.j).subs({C.x:x, C.y:y, C.z:z})
         ccfz = ccf.dot(C.k).subs({C.x:x, C.y:y, C.z:z})
         self.curlcurlFx = sym.lambdify(('x', 'y', 'z'), ccfx, "numpy")
         self.curlcurlFy = sym.lambdify(('x', 'y', 'z'), ccfy, "numpy")
         self.curlcurlFz = sym.lambdify(('x', 'y', 'z'), ccfz, "numpy")
+
+        self.beta = beta
+        self.k = k
 
     def solution(self, p):
         x = p[..., 0, None]
@@ -90,7 +98,7 @@ class MaxwellPDE():
         if type(ccFz) is not np.ndarray:
             ccFz = np.ones(x.shape, dtype=np.float_)*ccFz
         ccf = np.c_[ccFx, ccFy, ccFz] 
-        return ccf - self.solution(p)
+        return ccf - self.beta*self.solution(p)
 
     @cartesian
     def dirichlet(self, p):
@@ -117,11 +125,27 @@ class MaxwellPDE():
         cf = np.c_[cFx, cFy, cFz] #(..., NC, ldof, 3)
         return np.cross(n[None, :], cf)
 
+    def robin(self, p, n):
+        """!
+        @param p: (..., N, ldof, 3)
+        @param n: (N, 3)
+        """
+        cf = self.curl_solution(p)
+        fval = self.solution(p)
+        return np.cross(n[None, :], cf + self.k*np.cross(n[None, :], fval))
+
     def boundary_type(self, mesh):
         bdface = mesh.ds.boundary_face_index()
         f2n = mesh.face_unit_normal()[bdface]
-        neumannbd = np.abs(f2n[:, 2])<0.9
-        bd = {"neumann": bdface[neumannbd], "dirichlet": bdface[~neumannbd]}
+        isLeftBd   = np.abs(f2n[:, 0]+1)<1e-14
+        isRightBd  = np.abs(f2n[:, 0]-1)<1e-14
+        isFrontBd  = np.abs(f2n[:, 1]+1)<1e-14
+        isBackBd   = np.abs(f2n[:, 1]-1)<1e-14
+        isBottomBd = np.abs(f2n[:, 2]+1)<1e-14
+        isUpBd     = np.abs(f2n[:, 2]-1)<1e-14
+        bd = {"left": bdface[isLeftBd], "right": bdface[isRightBd], 
+              "front": bdface[isFrontBd], "back": bdface[isBackBd], 
+              "up": bdface[isUpBd], "bottom": bdface[isBottomBd], }
         return bd
 
 class SinData(MaxwellPDE):

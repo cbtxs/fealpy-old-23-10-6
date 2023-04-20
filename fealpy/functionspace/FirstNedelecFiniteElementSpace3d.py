@@ -96,7 +96,6 @@ class FirstNedelecFiniteElementSpace3d:
         face = mesh.entity("face")[index]
         node = mesh.entity("node")
         e = node[face[:, localEdge[:, 1]]] - node[face[:, localEdge[:, 0]]] #(NF, 3, 3)
-
         glambda = np.cross(n[:, None], e)/(2*fm[:, None, None]) #(NF, 3, 3)
         if p==1:
             fphi = bc[..., None, localEdge[:, 0], None]*glambda[:, 
@@ -288,6 +287,42 @@ class FirstNedelecFiniteElementSpace3d:
         return csr_matrix((val.flat, (I.flat, J.flat)), shape = (gdof, gdof),
                 dtype=dtype)
 
+    def face_mass_matrix(self, c = 1, index=np.s_[:]):
+        """
+        @brief (n \times u, n \times v)_{Gamma_{robin}}
+        @param c 系数, 现在只考虑了 c 是常数的情况
+        """
+        bcs, ws = self.integralalg.faceintegrator.get_quadrature_points_and_weights()
+        face2dof = self.dof.face_to_dof(index=index)
+        fm = self.mesh.entity_measure("face", index=index)
+        fphi = self.face_basis(bcs, index=index)
+
+        EMc = np.einsum('qflg, qfmg, q, f->flm', fphi, fphi, ws, fm)
+
+        gdof = self.dof.number_of_global_dofs()
+        I = np.broadcast_to(face2dof[..., None], EMc.shape)
+        J = np.broadcast_to(face2dof[:, None, :], EMc.shape)
+        EM = c*csr_matrix((EMc.flat, (I.flat, J.flat)), shape=(gdof, gdof))
+        return EM
+
+    def robin_vector(self, f, isRobinFace):
+        """
+        @brief 计算 (f, n\times v)_{\Gamma_{robin}} 
+        """
+        bcs, ws = self.integralalg.faceintegrator.get_quadrature_points_and_weights()
+        n = self.mesh.edge_unit_normal()[isRobinEdge]
+
+        point = self.mesh.bc_to_point(bcs, index=isRobinFace)
+        fval = f(point, n)
+        phi = self.face_basis(bcs, index=index)
+
+        Fc = np.einsum('qfg, qflg, q, f->fl', fval, phi, ws, fm)
+
+        face2dof = self.dof.face_to_dof(index=isRobinFace)
+        gdof = self.dof.number_of_global_dofs()
+        F = np.zeros(gdof, dtype=np.float_)
+        np.add.at(F, face2dof, Fc)
+        return F
 
     def source_vector(self, f, dtype=np.float_):
         bcs, ws = self.integrator.get_quadrature_points_and_weights()
