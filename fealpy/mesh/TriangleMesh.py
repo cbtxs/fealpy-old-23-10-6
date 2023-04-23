@@ -115,12 +115,12 @@ class TriangleMesh(Mesh2d):
         p = np.einsum('...j, ijk->...ik', bc, node[entity])
         return p
 
-    def shape_function(self, bc, p=1):
+    def shape_function(self, bc, p=1, etype='cell'):
         """
         @brief
         """
         TD = bc.shape[-1] - 1
-        multiIndex = self.multi_index_matrix(p)
+        multiIndex = self.multi_index_matrix(p, etype=etype)
         c = np.arange(1, p+1, dtype=np.int_)
         P = 1.0/np.multiply.accumulate(c)
         t = np.arange(0, p)
@@ -134,7 +134,9 @@ class TriangleMesh(Mesh2d):
         return phi
 
     def grad_shape_function(self, bc, p=1, index=np.s_[:]):
-
+        """
+        @note 注意这里调用的实际上不是形状函数的梯度，而是网格空间基函数的梯度
+        """
         TD = self.top_dimension()
         multiIndex = self.multi_index_matrix(p)
 
@@ -187,8 +189,8 @@ class TriangleMesh(Mesh2d):
             Dlambda[:, 1] = v1@W/length[:, None]
             Dlambda[:, 2] = v2@W/length[:, None]
         elif GD == 3:
-            length = np.sqrt(np.square(nv).sum(axis=1))
-            n = nv/length.reshape((-1, 1))
+            length = np.linalg.norm(nv, axis=-1, keepdims=True)
+            n = nv/length
             Dlambda[:, 0] = np.cross(n, v0)/length[:, None]
             Dlambda[:, 1] = np.cross(n, v1)/length[:, None]
             Dlambda[:, 2] = np.cross(n, v2)/length[:, None]
@@ -300,9 +302,10 @@ class TriangleMesh(Mesh2d):
         NC = self.number_of_cells()
         return NN + (p-1)*NE + (p-2)*(p-1)//2*NC
 
-    def interpolation_points(self, p):
+    def interpolation_points(self, p, index=np.s_[:]):
         """
         @brief 获取三角形网格上所有 p 次插值点
+        TODO index
         """
         cell = self.entity('cell')
         node = self.entity('node')
@@ -340,8 +343,7 @@ class TriangleMesh(Mesh2d):
         """
         @brief 获取网格边与插值点的对应关系
         """
-
-        if index == np.s_[:]:
+        if isinstance(index, slice) and index == slice(None):
             NE = self.number_of_edges()
             index = np.arange(NE)
         elif isinstance(index, np.ndarray) and (index.dtype == np.bool_):

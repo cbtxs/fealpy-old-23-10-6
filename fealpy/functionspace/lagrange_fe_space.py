@@ -36,7 +36,7 @@ class SimplexMeshCLFEDof():
     def cell_to_dof(self, index=np.s_[:]):
         return self.mesh.cell_to_ipoint(self.p, index=index)
 
-    def interpolation_points(self):
+    def interpolation_points(self, index=np.s_[:]):
         return self.mesh.interpolation_points(self.p, index=index)
 
     def number_of_global_dofs(self):
@@ -418,7 +418,7 @@ class LagrangeFESpace():
         return self.dof.cell_to_dof()[index]
 
     def face_to_dof(self, index=np.s_[:]):
-        return self.dof.face_to_dof() #TODO: index
+        return self.dof.face_to_dof()[index] #TODO: index
 
     def edge_to_dof(self, index=np.s_[:]):
         return self.dof.edge_to_dof() #TODO：index
@@ -443,6 +443,10 @@ class LagrangeFESpace():
 
     @barycentric
     def grad_basis(self, bc, index=np.s_[:]):
+        """
+        @brief 
+        @note 注意这里调用的实际上不是形状函数的梯度，而是网格空间基函数的梯度
+        """
         return self.mesh.grad_shape_function(bc, p=self.p, index=index)
     
     @barycentric
@@ -450,7 +454,9 @@ class LagrangeFESpace():
         """
         @brief 计算 face 上的基函数在给定积分点处的函数值
         """
-        pass
+        p = self.p
+        phi = self.mesh.shape_function(bc, p=p,etype='face')
+        return phi[..., None, :]
 
     @barycentric
     def value(self, 
@@ -503,13 +509,21 @@ class LagrangeFESpace():
             index: Union[np.ndarray, slice]=np.s_[:]
             ) -> np.ndarray:
         """
+        @note
         """
         gdof = self.number_of_global_dofs()
-        gphi = self.grad_basis(bc, index=index) # (NQ, NC, ldof, GD)
+        gphi = self.grad_basis(bc, index=index)
         cell2dof = self.dof.cell_to_dof(index=index)
         dim = len(uh.shape) - 1
         s0 = 'abdefg'
-        if self.doforder == 'sdofs':
+
+        if dim == 0: # 如果
+            # gphi.shape == (NQ, NC, ldof, GD)
+            # uh.shape == (gdof, )
+            # uh[cell2dof].shape == (NC, ldof)
+            # val.shape == (NQ, NC, GD)
+            val = np.einsum('...cim, ci->...cm', gphi, uh[cell2dof[index]])
+        elif self.doforder == 'sdofs':
             # gphi.shape == (NQ, NC, ldof, GD)
             # uh.shape == (..., gdof)
             # uh[..., cell2dof].shape == (..., NC, ldof)
