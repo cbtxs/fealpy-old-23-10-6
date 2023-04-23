@@ -5,13 +5,13 @@ import sympy as sym
 from sympy.vector import CoordSys3D, Del, curl
 
 class MaxwellPDE():
+    def __init__(self, f, beta=1, k=1):
         """
         @brief 求解方程 
                              curl curl E - beta E = J     Omega
                                        n \times E = g     Gamma0
                  n \times (curl E + k n \times E) = f     Gamma1
         """
-    def __init__(self, f, beta=1, k=1):
         C = CoordSys3D('C')
         x = sym.symbols("x")
         y = sym.symbols("y")
@@ -101,8 +101,9 @@ class MaxwellPDE():
         return ccf - self.beta*self.solution(p)
 
     @cartesian
-    def dirichlet(self, p):
-        return self.solution(p)
+    def dirichlet(self, p, n):
+        val = self.solution(p)
+        return np.cross(n, val)
 
     @cartesian
     def neumann(self, p, n):
@@ -149,7 +150,7 @@ class MaxwellPDE():
         return bd
 
 class SinData(MaxwellPDE):
-    def __init__(self):
+    def __init__(self, beta=1, k=1):
         C = CoordSys3D('C')
         #f = 1*C.i + sym.sin(sym.pi*C.x)*C.j + sym.sin(sym.pi*C.z)*C.k 
         #f = sym.sin(sym.pi*C.y)*C.i + sym.sin(sym.pi*C.x)*C.j + C.x*sym.sin(sym.pi*C.z)*C.k 
@@ -161,10 +162,11 @@ class SinData(MaxwellPDE):
 
         #f = (C.x**2-C.x)**2*(C.y**2-C.y)**2*(C.z**2-C.z)**2
         #f = f*C.i + sym.sin(C.x)*f*C.j + sym.sin(C.y)*f*C.k
-        super(SinData, self).__init__(f)
+        super(SinData, self).__init__(f, beta, k)
 
     def init_mesh(self, n=1):
-        box = [0, 1, 0, 1, 0, 1]
+        box = [0, 1/2, 0, 1/2, 0, 1/2]
+        #box = [0, 1, 0, 1, 0, 1]
         mesh = MeshFactory.boxmesh3d(box, nx=n, ny=n, nz=n, meshtype='tet')
         return mesh
 

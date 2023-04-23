@@ -35,9 +35,9 @@ class FNDof3d:
         NE = mesh.number_of_edges()
         return np.arange(NE) 
 
-    def face_to_dof(self):
+    def face_to_dof(self, index=np.s_[:]):
         mesh = self.mesh
-        return mesh.ds.face_to_edge()
+        return mesh.ds.face_to_edge()[index]
 
     def cell_to_dof(self):
         mesh = self.mesh
@@ -101,7 +101,7 @@ class FirstNedelecFiniteElementSpace3d:
             fphi = bc[..., None, localEdge[:, 0], None]*glambda[:, 
                     localEdge[:, 1]] - bc[..., None, localEdge[:, 1], None]*glambda[:,
                     localEdge[:, 0]]
-            f2es = mesh.ds.face_to_edge_sign().astype(np.float_)[index]
+            f2es = mesh.ds.face_to_edge_sign().astype(np.int_)[index]
             f2es[f2es==0] = -1
             return fphi*f2es[..., None]
 
@@ -310,11 +310,12 @@ class FirstNedelecFiniteElementSpace3d:
         @brief 计算 (f, n\times v)_{\Gamma_{robin}} 
         """
         bcs, ws = self.integralalg.faceintegrator.get_quadrature_points_and_weights()
-        n = self.mesh.edge_unit_normal()[isRobinEdge]
+        n = self.mesh.face_unit_normal()[isRobinFace]
+        fm = self.mesh.entity_measure("face", index=isRobinFace)
 
         point = self.mesh.bc_to_point(bcs, index=isRobinFace)
         fval = f(point, n)
-        phi = self.face_basis(bcs, index=index)
+        phi = self.face_basis(bcs, index=isRobinFace)
 
         Fc = np.einsum('qfg, qflg, q, f->fl', fval, phi, ws, fm)
 
@@ -353,15 +354,17 @@ class FirstNedelecFiniteElementSpace3d:
             index = self.mesh.ds.boundary_face_index()
 
         face2edge = mesh.ds.face_to_edge()[index]
+        n = mesh.face_unit_normal(index=index) 
 
         if 1: #节点型自由度
             locEdge = np.array([[1, 2], [2, 0], [0, 1]], dtype=np.int_)
-            point = 0.5*(np.sum(node[face[:, locEdge][index]], axis=-2))
-            vec = mesh.edge_tangent()[face2edge]
-            gval = gD(point, vec) #(NF, 3)
+            point = 0.5*(np.sum(node[face[:, locEdge][index]], axis=-2)) #(NF, 3, 3)
+            vec = mesh.edge_tangent()[face2edge] #(NF, 3, 3)
+
+            gval = gD(point, n[:, None, :]) #(NF, 3, 3)
 
             face2dof = self.dof.face_to_dof()[index]
-            uh[face2dof] = gval 
+            uh[face2dof] = np.sum(gval*np.cross(n[:, None, :], vec), axis=-1) 
         else: #积分型自由度
             bcs, ws = self.integralalg.edgeintegrator.get_quadrature_points_and_weights()
             ps = mesh.bc_to_point(bcs)[:, face2edge]
