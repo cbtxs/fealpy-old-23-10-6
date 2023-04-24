@@ -20,7 +20,7 @@ class ScalarNeumannBCIntegrator:
         else:
             index = mesh.ds.boundary_face_index()
             if callable(threshold):
-                bc = mesh.entity_barycenter('face')
+                bc = mesh.entity_barycenter('face', index=index)
                 index = index[threshold(bc)]
 
         face2dof = space.face_to_dof(index=index)
@@ -49,7 +49,6 @@ class ScalarNeumannBCIntegrator:
         else:
             assert out.shape == (gdof,)
             F = out
-        
         bb = np.einsum('q, qf, qfi, f->fi', ws, val, phi, facemeasure, optimize=True)
         np.add.at(F, face2dof, bb)
 
