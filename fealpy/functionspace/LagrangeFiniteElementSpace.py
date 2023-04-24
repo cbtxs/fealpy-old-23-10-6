@@ -1014,7 +1014,7 @@ class LagrangeFiniteElementSpace():
             A = T@A@T + Tbd
 
         #A.eliminate_zeros()
-        return A, cell2dof 
+        return A
 
     def mass_matrix(self, c=None, q=None):
         gdof = self.number_of_global_dofs()
