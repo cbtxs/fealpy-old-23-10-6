@@ -296,15 +296,15 @@ class Mesh3dDataStructure():
 
         TODO: check here
         """
-        if cell==None:
-            cell = self.cell
+        cell2edge = self.cell_to_edge()
+        edge = self.edge
+        cell = self.cell
         NC = self.NC
         NEC = self.NEC
         cell2edgeSign = np.zeros((NC, NEC), dtype=np.bool_)
         localEdge = self.localEdge
-        E = localEdge.shape[0]
-        for i, (j, k) in zip(range(E), localEdge):
-            cell2edgeSign[:, i] = cell[:, j] < cell[:, k]
+        for i in range(6):
+            cell2edgeSign[:, i] = (cell[:, localEdge[i, 0]] == edge[cell2edge[:, i], 0])
         return cell2edgeSign
 
     def cell_to_face_sign(self):

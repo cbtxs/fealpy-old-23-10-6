@@ -546,7 +546,7 @@ class LagrangeFESpace():
         pass
 
 
-    def boundary_intepolate(self, 
+    def boundary_interpolate(self, 
             gD: Union[Callable, int, float, np.ndarray], 
             uh: np.ndarray, 
             threshold: Union[Callable, np.ndarray, None]=None) -> np.ndarray:

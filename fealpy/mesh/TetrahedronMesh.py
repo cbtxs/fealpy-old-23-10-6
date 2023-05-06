@@ -442,6 +442,7 @@ class TetrahedronMesh(Mesh3d):
             cellType = 10  # 四面体
             celldata = self.celldata
         elif etype == 'face':
+            cell[:, 0] = 3
             cellType = 5  # 三角形
             celldata = self.facedata
         elif etype == 'edge':
