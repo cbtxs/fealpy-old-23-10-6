@@ -2,369 +2,20 @@ import numpy as np
 from typing import Optional, Union, Callable
 from .Function import Function
 from ..decorator import barycentric
-
-class SimplexMeshCLFEDof():
-    def __init__(self, mesh, p):
-        self.mesh = mesh
-        self.p = p
-        self.multiIndex = mesh.multi_index_matrix(p) 
-        self.cell2dof = self.cell_to_dof()
-
-    def is_boundary_dof(self, threshold=None):
-        TD = self.mesh.top_dimension()
-        if type(threshold) is np.ndarray:
-            index = threshold
-        else:
-            index = self.mesh.ds.boundary_face_index()
-            if callable(threshold):
-                bc = self.mesh.entity_barycenter(TD-1, index=index)
-                flag = threshold(bc)
-                index = index[flag]
-
-        gdof = self.number_of_global_dofs()
-        face2dof = self.face_to_dof(index=index) # 只获取指定的面的自由度信息
-        isBdDof = np.zeros(gdof, dtype=np.bool_)
-        isBdDof[face2dof] = True
-        return isBdDof
-
-    def face_to_dof(self, index=np.s_[:]):
-        return self.mesh.face_to_ipoint(self.p, index=index)
-
-    def edge_to_dof(self, index=np.s_[:]):
-        return self.mesh.edge_to_ipoint(self.p, index=index)
-
-    def cell_to_dof(self, index=np.s_[:]):
-        return self.mesh.cell_to_ipoint(self.p, index=index)
-
-    def interpolation_points(self, index=np.s_[:]):
-        return self.mesh.interpolation_points(self.p, index=index)
-
-    def number_of_global_dofs(self):
-        return self.mesh.number_of_global_ipoints(self.p)
-
-    def number_of_local_dofs(self, doftype='cell'):
-        return self.mesh.number_of_local_ipoints(self.p, iptype=doftype)
-
-class IntervalMeshCLFEDof(SimplexMeshCLFEDof):
-    def __init__(self, mesh, p: int):
-        super(IntervalMeshCLFEDof, self).__init__(mesh, p)
-
-    def entity_to_dof(self, 
-            etype: Union[str, int]='cell', 
-            index: Union[np.ndarray, slice]=np.s_[:]
-            ) -> np.ndarray:
-        if etype in {'cell', 'edge', 1}:
-            return self.cell_to_dof()[index] #TODO: cell_to_dof 应该接收一个 index 参数
-        elif etype in {'node', 'face', 0}:
-            NN = self.mesh.number_of_nodes()
-            return np.arange(NN)[index]
-        else:
-            raise ValueError(f"Unsupported etype: {etype}. Supported types are: 'cell', 'edge', 1, 'node', 'face', and 0.")
-
-class TriangleMeshCLFEDof(SimplexMeshCLFEDof):
-    def __init__(self, mesh, p):
-        super(TriangleMeshCLFEDof, self).__init__(mesh, p)
-
-    def entity_to_dof(self, 
-            etype: Union[str, int]='cell', 
-            index: Union[np.ndarray, slice]=np.s_[:]
-            ) -> np.ndarray:
-        if etype in {'cell', 2}:
-            return self.cell_to_dof()[index] #TODO
-        elif etype in {'face', 'edge', 1}:
-            return self.edge_to_dof()[index] #TODO
-        elif etype in {'node', 0}:
-            NN = self.mesh.number_of_nodes()
-            return np.arange(NN)[index]
-        else:
-            raise ValueError(f"Unsupported etype: {etype}. Supported types are: 'cell', 2, 'face', 'edge', 1, 'node', and 0.")
-
-    def is_on_node_local_dof(self):
-        p = self.p
-        isNodeDof = np.sum(self.multiIndex == p, axis=-1) > 0
-        return isNodeDof
-
-    def is_on_edge_local_dof(self):
-        return self.multiIndex == 0
-
-class TetrahedronMeshCLFEDof(SimplexMeshCLFEDof):
-    def __init__(self, mesh, p):
-        super(TetrahedronMeshCLFEDof, self).__init__(mesh, p)
-
-    def entity_to_dof(self, 
-            etype: Union[str, int]='cell', 
-            index: Union[np.ndarray, slice]=np.s_[:]
-            ) -> np.ndarray:
-        if etype in {'cell', 3}:
-            return self.cell_to_dof()[index] #TODO:
-        elif etype in {'face', 2}:
-            return self.face_to_dof()[index] #TODO:
-        elif etype in {'edge', 1}:
-            return self.edge_to_dof()[index] #TODO:
-        elif etype in {'node', 0}:
-            NN = self.mesh.number_of_nodes() #TODO:
-            return np.arange(NN)[index]
-        else:
-            raise ValueError(f"Unsupported etype: {etype}. Supported types are: 'cell', 3, 'face', 2, 'edge', 1, 'node', and 0.")
-
-    def is_on_node_local_dof(self):
-        p = self.p
-        isNodeDof = np.sum(self.multiIndex == p, axis=-1) == 1
-        return isNodeDof
-
-    def is_on_edge_local_dof(self):
-        p =self.p
-        ldof = self.number_of_local_dofs()
-        localEdge = self.mesh.ds.localEdge
-        isEdgeDof = np.zeros((ldof, 6), dtype=np.bool_)
-        for i in range(6):
-            isEdgeDof[:, i] = (self.multiIndex[:, localEdge[-(i+1), 0]] == 0) & (self.multiIndex[:, localEdge[-(i+1), 1]] == 0 )
-        return isEdgeDof
-
-    def is_on_face_local_dof(self):
-        p = self.p
-        ldof = self.number_of_local_dofs()
-        isFaceDof = (self.multiIndex == 0)
-        return isFaceDof
-
-class SimplexMeshDLFEDof():
-    """
-    间断单元自由度管理基类.
-    """
-    def __init__(self, mesh, p):
-        self.mesh = mesh
-        self.p = p
-        if p > 0:
-            self.multiIndex = mesh.multi_index_matrix(self.p)
-        else:
-            TD = mesh.top_dimension()
-            self.multiIndex = np.array((TD+1)*(0,), dtype=mesh.itype)
-        self.cell2dof = self.cell_to_dof()
-
-
-    def cell_to_dof(self):
-        mesh = self.mesh
-        NC = mesh.number_of_cells()
-        ldof = self.number_of_local_dofs()
-        cell2dof = np.arange(NC*ldof).reshape(NC, ldof)
-        return cell2dof
-
-    def number_of_global_dofs(self):
-        NC = self.mesh.number_of_cells()
-        ldof = self.number_of_local_dofs()
-        gdof = ldof*NC
-        return gdof
-
-    def number_of_local_dofs(self):
-        p = self.p
-        TD = self.mesh.top_dimension()
-        numer = reduce(op.mul, range(p + TD, p, -1))
-        denom = reduce(op.mul, range(1, TD + 1))
-        return numer//denom
-
-    def interpolation_points(self):
-        p = self.p
-        mesh = self.mesh
-        cell = mesh.entity('cell')
-        node = mesh.entity('node')
-        GD = mesh.geo_dimension()
-
-        if p == 0:
-            return mesh.entity_barycenter('cell')
-
-        if p == 1:
-            return node[cell].reshape(-1, GD)
-
-        w = self.multiIndex/p
-        ipoint = np.einsum('ij, kj...->ki...', w, node[cell]).reshape(-1, GD)
-        return ipoint
-
-
-class IntervalMeshDLFEDof(SimplexMeshDLFEDof):
-    """
-    区间间断单元自由度管理类.
-    """
-    def __init__(self, mesh, p):
-        super(IntervalMeshDLFEDof, self).__init__(mesh, p)
-
-    def entity_to_dof(self, 
-            etype: Union[str, int]='cell', 
-            index: Union[np.ndarray, slice]=np.s_[:]
-            ) -> np.ndarray:
-        if etype in {'cell', 'edge', 1}:
-            return self.cell_to_dof()[index]
-        else:
-            raise ValueError(f"Unsupported etype: {etype}. Supported types are: 'cell', 'edge', and 1.")
-
-class TriangleMeshDLFEDof(SimplexMeshDLFEDof):
-    """
-    三角形间断单元自由度管理类.
-    """
-    def __init__(self, mesh, p):
-        super(TriangleMeshDLFEDof, self).__init__(mesh, p)
-
-    def entity_to_dof(self, 
-            etype: Union[str, int]='cell', 
-            index: Union[np.ndarray, slice]=np.s_[:]
-            ) -> np.ndarray:
-        if etype in {'cell',  2}:
-            return self.cell_to_dof()[index]
-        else:
-            raise ValueError(f"Unsupported etype: {etype}. Supported types are: 'cell' and 2.")
-
-
-class TetrahedronMeshDLFEDof(SimplexMeshDLFEDof):
-    """
-    四面体间断单元自由度管理类.
-    """
-    def __init__(self, mesh, p):
-        super(TetrahedronMeshDLFEDof, self).__init__(mesh, p)
-
-    def entity_to_dof(self, 
-            etype: Union[str, int]='cell', 
-            index: Union[np.ndarray, slice]=np.s_[:]
-            ) -> np.ndarray:
-        if etype in {'cell', 3}:
-            return self.cell_to_dof()[index]
-        else:
-            raise ValueError(f"Unsupported etype: {etype}. Supported types are: 'cell' and 3.")
-
-
-class EdgeMeshCLFEDof():
-    """
-    @brief EdgeMesh 上的分片 p 次连续元的自由度管理类
-    """
-    def __init__(self, mesh, p):
-        self.mesh = mesh
-        self.p = p
-        self.multiIndex = mesh.multi_index_matrix(p) 
-
-    def is_boundary_dof(self, threshold=None):
-        if type(threshold) is np.ndarray:
-            index = threshold
-        else:
-            index = self.mesh.ds.boundary_node_index()
-            if callable(threshold):
-                bc = self.mesh.entity_barycenter('node', index=index)
-                flag = threshold(bc)
-                index = index[flag]
-
-        gdof = self.number_of_global_dofs()
-        isBdDof = np.zeros(gdof, dtype=np.bool_)
-        isBdDof[index] = True
-        return isBdDof
-
-    def entity_to_dof(self, 
-            etype: Union[str, int]='cell', 
-            index: Union[np.ndarray, slice]=np.s_[:]
-            ) -> np.ndarray:
-        if etype in {'cell', 'edge', 1}:
-            return self.cell_to_dof()[index]
-        elif etype in {'node', 'face', 0}:
-            NN = self.mesh.number_of_nodes()
-            return np.arange(NN)[index]
-        else:
-            raise ValueError(f"Unsupported etype: {etype}. Supported types are: 'cell', 'edge', 1, 'node', 'face', and 0.")
-
-    def cell_to_dof(self, index=np.s_[:]):
-        return self.mesh.cell_to_ipoint(self.p)[index]
-#        cell = self.mesh.entity('cell')
-#        GD = self.mesh.geo_dimension()
-#        NN = self.mesh.number_of_nodes()
-#        cell2dof = np.zeros((cell.shape[0], 2*GD), dtype=np.int_)
-#        for i in range(GD):
-#            cell2dof[:, i::GD] = cell + NN*i 
-#        return cell2dof
-
-    def number_of_local_dofs(self, doftype='cell'):
-        return self.mesh.number_of_local_ipoints(self.p, iptype=doftype)
-
-    def number_of_global_dofs(self):
-        return self.mesh.number_of_global_ipoints(self.p)
-
-    def interpolation_points(self):
-        return self.mesh.interpolation_points(self.p)
-
-class EdgeMeshDLFEDof():
-    """
-    @brief EdgeMesh 上的分片 p 次间断元的自由度管理类
-    """
-    def __init__(self, mesh, p):
-        self.mesh = mesh
-        self.p = p
-        self.multiIndex = mesh.multi_index_matrix() 
-
-    def is_boundary_dof(self, threshold=None):
-        if type(threshold) is np.ndarray:
-            index = threshold
-        else:
-            index = self.mesh.ds.boundary_node_index()
-            if callable(threshold):
-                bc = self.mesh.entity_barycenter('node', index=index)
-                flag = threshold(bc)
-                index = index[flag]
-
-        gdof = self.number_of_global_dofs()
-        isBdDof = np.zeros(gdof, dtype=np.bool_)
-        isBdDof[index] = True
-        return isBdDof
-
-    def entity_to_dof(self, 
-            etype: Union[str, int]='cell', 
-            index: Union[np.ndarray, slice]=np.s_[:]
-            ) -> np.ndarray:
-        if etype in {'cell', 'edge', 1}:
-            return self.cell_to_dof()[index] # TODO:
-        else:
-            raise ValueError(f"Unsupported etype: {etype}. Supported types are: 'cell', 'edge', and 1.")
-
-    def cell_to_dof(self):
-        p = self.p
-        mesh = self.mesh
-        cell = mesh.entity('cell')
-        ldof = self.number_of_local_dofs()
-        cell2dof = np.arange(NC*(p+1)).reshape(NC, p+1)
-        return cell2dof
-
-    def number_of_local_dofs(self, _):
-        return self.p + 1
-
-    def number_of_global_dofs(self):
-        p = self.p
-        mesh = self.mesh
-        NC = mesh.number_of_cells()
-        gdof = NC*(p+1)
-        return gdof
-
-    def interpolation_points(self, index=np.s_[:]):
-        p = self.p
-        mesh = self.mesh
-        cell = mesh.entity('cell')
-        node = mesh.entity('node')
-        GD = mesh.geo_dimension()
-
-        if p == 0:
-            return mesh.entity_barycenter('cell')
-
-        if p == 1:
-            return node[cell].reshape(-1, GD)
-
-        w = self.multiIndex/p
-        ipoint = np.einsum('ij, kj...->ki...', w, node[cell]).reshape(-1, GD)
-        return ipoint
+from .fem_dofs import *
 
 class LagrangeFESpace():
     DOF = { 'C': {
-                "IntervalMesh": IntervalMeshCLFEDof,
-                "TriangleMesh": TriangleMeshCLFEDof,
-                "TetrahedronMesh": TetrahedronMeshCLFEDof,
-                "EdgeMesh": EdgeMeshCLFEDof,
+                "IntervalMesh": IntervalMeshCFEDof,
+                "TriangleMesh": TriangleMeshCFEDof,
+                "TetrahedronMesh": TetrahedronMeshCFEDof,
+                "EdgeMesh": EdgeMeshCFEDof,
                 }, 
             'D':{
-                "IntervalMesh": IntervalMeshDLFEDof,
-                "TriangleMesh": TriangleMeshDLFEDof,
-                "TetrahedronMesh": TetrahedronMeshDLFEDof,
-                "EdgeMesh": EdgeMeshDLFEDof, 
+                "IntervalMesh": IntervalMeshDFEDof,
+                "TriangleMesh": TriangleMeshDFEDof,
+                "TetrahedronMesh": TetrahedronMeshDFEDof,
+                "EdgeMesh": EdgeMeshDFEDof, 
                 }
         } 
         
@@ -372,7 +23,7 @@ class LagrangeFESpace():
             mesh, 
             p: int=1, 
             spacetype: str='C', 
-            doforder: str='sdofs'):
+            doforder: str='vdims'):
         """
         @brief Initialize the Lagrange finite element space.
 
@@ -450,7 +101,7 @@ class LagrangeFESpace():
         return self.mesh.grad_shape_function(bc, p=self.p, index=index)
     
     @barycentric
-    def face_basis(self, bc):
+    def face_basis(self, bc, index=np.s_[:]):
         """
         @brief 计算 face 上的基函数在给定积分点处的函数值
         """
@@ -564,6 +215,7 @@ class LagrangeFESpace():
         """
         ipoints = self.interpolation_points() # TODO: 直接获取过滤后的插值点
         isDDof = self.is_boundary_dof(threshold=threshold)
+        GD = self.geo_dimension()
 
         if callable(gD): 
             gD = gD(ipoints[isDDof])
@@ -577,7 +229,10 @@ class LagrangeFESpace():
             if isinstance(gD, (int, float)):
                 uh[..., isDDof] = gD 
             elif isinstance(gD, np.ndarray):
-                uh[..., isDDof] = gD.T
+                if gD.shape == (GD, ):
+                    uh[..., isDDof] = gD[:, None]
+                else:
+                    uh[..., isDDof] = gD.T
             else:
                 raise ValueError("Unsupported type for gD. Must be a callable, int, float, or numpy.ndarray.")
 

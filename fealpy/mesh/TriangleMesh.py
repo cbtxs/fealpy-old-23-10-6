@@ -115,10 +115,15 @@ class TriangleMesh(Mesh2d):
         p = np.einsum('...j, ijk->...ik', bc, node[entity])
         return p
 
+
+
     def shape_function(self, bc, p=1, etype='cell'):
         """
         @brief
         """
+        if p==1:
+            return bc
+
         TD = bc.shape[-1] - 1
         multiIndex = self.multi_index_matrix(p, etype=etype)
         c = np.arange(1, p+1, dtype=np.int_)
@@ -133,7 +138,7 @@ class TriangleMesh(Mesh2d):
         phi = np.prod(A[..., multiIndex, idx], axis=-1)
         return phi
 
-    def grad_shape_function(self, bc, p=1, index=np.s_[:]):
+    def grad_shape_function(self, bc, p=1, index=np.s_[:], variables='x'):
         """
         @note 注意这里调用的实际上不是形状函数的梯度，而是网格空间基函数的梯度
         """
@@ -168,9 +173,41 @@ class TriangleMesh(Mesh2d):
             idx.remove(i)
             R[..., i] = M[..., i]*np.prod(Q[..., idx], axis=-1)
 
-        Dlambda = self.grad_lambda(index=index)
-        gphi = np.einsum('...ij, kjm->...kim', R, Dlambda)
-        return gphi #(..., NC, ldof, GD)
+        if variables == 'x':
+            Dlambda = self.grad_lambda(index=index)
+            gphi = np.einsum('...ij, kjm->...kim', R, Dlambda)
+            return gphi #(..., NC, ldof, GD)
+        elif variables == 'u':
+            return R
+
+    def grad_shape_function_on_edge(self, bc, cindex, lidx, p=1, direction=True):
+        """
+        @brief 计算单元上所有形函数在边上的积分点处的导函数值
+
+        @brief bc 边上的一组积分点
+        @brief cindex 边所在的单元编号
+        @brief lidx 边在该单元的局部编号
+        @brief direction  True 表示边的方向和单元的逆时针方向一致，False 表示不一致 
+        """
+
+        NC = len(cindex)
+        nmap = np.array([1, 2, 0])
+        pmap = np.array([2, 0, 1])
+        shape = (NC, ) + bc.shape[0:-1] + (3, )
+        bcs = np.zeros(shape, dtype=self.ftype)  # (NE, 3) or (NE, NQ, 3)
+        idx = np.arange(NC)
+        if direction:
+            bcs[idx, ..., nmap[lidx]] = bc[..., 0]
+            bcs[idx, ..., pmap[lidx]] = bc[..., 1]
+        else:
+            bcs[idx, ..., nmap[lidx]] = bc[..., 1]
+            bcs[idx, ..., pmap[lidx]] = bc[..., 0]
+
+        gphi = self.grad_shape_function(bcs, p=p, index=cindex, variables='x')
+
+        return gphi 
+
+    grad_shape_function_on_face = grad_shape_function_on_edge
 
     def grad_lambda(self, index=np.s_[:]):
         node = self.node
@@ -369,6 +406,53 @@ class TriangleMesh(Mesh2d):
 
     def cell_to_ipoint(self, p, index=np.s_[:]):
         """
+        """
+        cell = self.entity('cell')
+        if p==1:
+            return cell[index] 
+
+        mi = self.multi_index_matrix(p)
+        idx0, = np.nonzero(mi[:, 0] == 0)
+        idx1, = np.nonzero(mi[:, 1] == 0)
+        idx2, = np.nonzero(mi[:, 2] == 0)
+
+        edge2cell = self.ds.edge_to_cell()
+        NN = self.number_of_nodes()
+        NE = self.number_of_edges()
+        NC = self.number_of_cells() 
+
+        e2p = self.edge_to_ipoint(p)
+        ldof = self.number_of_local_ipoints(p)
+        c2p = np.zeros((NC, ldof), dtype=self.itype)
+
+        flag = edge2cell[:, 2] == 0
+        c2p[edge2cell[flag, 0][:, None], idx0] = e2p[flag]
+
+        flag = edge2cell[:, 2] == 1
+        c2p[edge2cell[flag, 0][:, None], idx1[-1::-1]] = e2p[flag]
+
+        flag = edge2cell[:, 2] == 2
+        c2p[edge2cell[flag, 0][:, None], idx2] = e2p[flag]
+
+
+        iflag = edge2cell[:, 0] != edge2cell[:, 1]
+
+        flag = iflag & (edge2cell[:, 3] == 0)
+        c2p[edge2cell[flag, 1][:, None], idx0[-1::-1]] = e2p[flag]
+
+        flag = iflag & (edge2cell[:, 3] == 1)
+        c2p[edge2cell[flag, 1][:, None], idx1] = e2p[flag]
+
+        flag = iflag & (edge2cell[:, 3] == 2)
+        c2p[edge2cell[flag, 1][:, None], idx2[-1::-1]] = e2p[flag]
+
+        cdof = (p-1)*(p-2)//2
+        flag = np.sum(mi > 0, axis=1) == 3
+        c2p[:, flag] = NN + NE*(p-1) + np.arange(NC*cdof).reshape(NC, cdof)
+        return c2p[index]
+
+    def _cell_to_ipoint(self, p, index=np.s_[:]):
+        """
         @brief 获取网格中的三角形单元与插值点的对应关系
         @todo 只获取一部分单元的插值点全局编号
         """
@@ -413,6 +497,7 @@ class TriangleMesh(Mesh2d):
             cell2ipoint[:, isInCellIPoint] = base + np.arange(NC*idof).reshape(NC, idof)
 
         return cell2ipoint
+
 
     def vtk_cell_type(self, etype='cell'):
         if etype in {'cell', 2}:
@@ -710,6 +795,54 @@ class TriangleMesh(Mesh2d):
             v1 = node[cell[:,k]] - node[cell[:,i]]
             angle[:, i] = np.arccos(np.sum(v0*v1, axis=1)/np.sqrt(np.sum(v0**2, axis=1) * np.sum(v1**2, axis=1)))
         return angle
+
+    def show_angle(self, axes, angle=None):
+        """
+        @brief 显示网格角度的分布直方图
+        """
+        if angle is None:
+            angle = self.angle() 
+        hist, bins = np.histogram(angle.flatten('F')*180/np.pi, bins=50, range=(0, 180))
+        center = (bins[:-1] + bins[1:])/2
+        axes.bar(center, hist, align='center', width=180/50.0)
+        axes.set_xlim(0, 180)
+        mina = np.min(angle.flatten('F')*180/np.pi)
+        maxa = np.max(angle.flatten('F')*180/np.pi)
+        meana = np.mean(angle.flatten('F')*180/np.pi)
+        axes.annotate('Min angle: {:.4}'.format(mina), xy=(0.41, 0.5),
+                textcoords='axes fraction',
+                horizontalalignment='left', verticalalignment='top')
+        axes.annotate('Max angle: {:.4}'.format(maxa), xy=(0.41, 0.45),
+                textcoords='axes fraction',
+                horizontalalignment='left', verticalalignment='top')
+        axes.annotate('Average angle: {:.4}'.format(meana), xy=(0.41, 0.40),
+                textcoords='axes fraction',
+                horizontalalignment='left', verticalalignment='top')
+        return mina, maxa, meana
+
+    def show_quality(self, axes, qtype=None, quality=None):
+        """
+        @brief 显示网格质量分布的分布直方图
+        """
+        if quality is None:
+            quality = self.cell_quality() 
+        minq = np.min(quality)
+        maxq = np.max(quality)
+        meanq = np.mean(quality)
+        hist, bins = np.histogram(quality, bins=50, range=(0, 1))
+        center = (bins[:-1] + bins[1:]) / 2
+        axes.bar(center, hist, align='center', width=0.02)
+        axes.set_xlim(0, 1)
+        axes.annotate('Min quality: {:.6}'.format(minq), xy=(0.1, 0.5),
+                textcoords='axes fraction',
+                horizontalalignment='left', verticalalignment='top')
+        axes.annotate('Max quality: {:.6}'.format(maxq), xy=(0.1, 0.45),
+                textcoords='axes fraction',
+                horizontalalignment='left', verticalalignment='top')
+        axes.annotate('Average quality: {:.6}'.format(meanq), xy=(0.1, 0.40),
+                textcoords='axes fraction',
+                horizontalalignment='left', verticalalignment='top')
+        return minq, maxq, meanq
 
 
     def edge_swap(self):

@@ -200,7 +200,7 @@ class TetrahedronMesh(Mesh3d):
         phi = np.prod(A[..., multiIndex, idx], axis=-1)
         return phi
 
-    def grad_shape_function(self, bc, p=1, index=np.s_[:]):
+    def grad_shape_function(self, bc, p=1, index=np.s_[:], variables='x'):
 
         TD = self.top_dimension()
 
@@ -234,9 +234,15 @@ class TetrahedronMesh(Mesh3d):
             idx.remove(i)
             R[..., i] = M[..., i]*np.prod(Q[..., idx], axis=-1)
 
-        Dlambda = self.grad_lambda(index=index)
-        gphi = np.einsum('...ij, kjm->...kim', R, Dlambda)
-        return gphi #(..., NC, ldof, GD)
+        if variables == 'x':
+            Dlambda = self.grad_lambda(index=index)
+            gphi = np.einsum('...ij, kjm->...kim', R, Dlambda)
+            return gphi #(..., NC, ldof, GD)
+        elif variables == 'u':
+            return R
+
+    def grad_shape_function_on_face(self, bc, cindex, lidx, p=1, direction=True):
+        pass
 
     def interpolation_points(self, p, index=np.s_[:]):
         """
@@ -357,7 +363,7 @@ class TetrahedronMesh(Mesh3d):
             fidof = fdof - 3*p
             face2ipoint[:, isInFaceIPoint] = base + np.arange(NF*fidof).reshape(NF, fidof)
 
-        return face2ipoint
+        return face2ipoint[index]
 
     def cell_to_ipoint(self, p, index=np.s_[:]):
         """
@@ -993,6 +999,33 @@ class TetrahedronMesh(Mesh3d):
         vol = self.cell_volume()
         return np.all(vol > threshold)
 
+    ## @ingroup MeshGenerators
+    @classmethod
+    def from_meshpy(cls, points, facets, h, 
+        hole_points=None, 
+        facet_markers=None, 
+        point_markers=None):
+
+        from meshpy.tet import MeshInfo, build
+
+        mesh_info = MeshInfo()
+        mesh_info.set_points(points)
+        mesh_info.set_facets(facets)
+        mesh = build(mesh_info, max_volume=h**3/6.0)
+
+        node = np.array(mesh.points, dtype=np.float64)
+        cell = np.array(mesh.elements, dtype=np.int_)
+
+        return cls(node, cell)
+
+    ## @ingroup MeshGenerators
+    @classmethod
+    def from_domain_distmesh(cls, domain, hmin, maxit=100, output=False):
+        from .DistMesher3d import DistMesher3d
+        mesher = DistMesher3d(domain, hmin, output=output)
+        mesh = mesher.meshing(maxit)
+        return mesh
+
 
     ## @ingroup MeshGenerators
     @classmethod
@@ -1013,6 +1046,47 @@ class TetrahedronMesh(Mesh3d):
                 [0.0, 0.0, 1.0]], dtype=np.float64)
         cell = np.array([[0, 1, 2, 3]], dtype=np.int_)
         return cls(node, cell)
+
+    ## @ingroup MeshGenerators
+    @classmethod
+    def from_cylinder_gmsh(cls, radius, height, lc):
+        """
+        @brief Generate a tetrahedral mesh for a cylinder domain
+        """
+        import gmsh
+        gmsh.initialize()
+        gmsh.model.add("Cylinder")
+
+        # 几何定义
+        gmsh.model.occ.addCylinder(0.0,0.0,0.0,0,0,height,radius)
+        gmsh.model.occ.synchronize()
+        
+        # 设置网格尺寸
+        gmsh.model.mesh.setSize(gmsh.model.getEntities(0),lc)
+        
+        # 网格生成
+        gmsh.model.mesh.generate(3)
+
+        # 获取节点信息
+        node_tags, node_coords, _ = gmsh.model.mesh.getNodes()
+        node = np.array(node_coords, dtype=np.float64).reshape(-1, 3) 
+        
+        #节点的编号映射 
+        nodetags_map = dict({j:i for i,j in enumerate(node_tags)})
+
+        # 获取四面体单元信息
+        tetrahedron_type = 4  # 四面体单元的类型编号为 4
+        tetrahedron_tags, tetrahedron_connectivity = gmsh.model.mesh.getElementsByType(tetrahedron_type)
+        evid = np.array([nodetags_map[j] for j in tetrahedron_connectivity])
+        cell = evid.reshape((tetrahedron_tags.shape[-1],-1))
+
+        # 输出节点和单元数量
+        print(f"Number of nodes: {node.shape[0]}")
+        print(f"Number of tetrahedra: {cell.shape[0]}")
+
+        gmsh.finalize()
+        return cls(node, cell)
+
 
     ## @ingroup MeshGenerators
     @classmethod
