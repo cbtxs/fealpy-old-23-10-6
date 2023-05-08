@@ -1247,3 +1247,67 @@ class TetrahedronMesh(Mesh3d):
         print_cpp_array(self.ds.face2cell)
         print("Cell2face:")
         print_cpp_array(self.ds.cell_to_face())
+
+    def to_mfem_file(self, filename):
+        """!
+        @brief 将网格保存为 MFEM 网格文件格式
+               格式类型见 : https://mfem.org/mesh-format-v1.0/
+        """
+        # Open file for writing
+        with open(filename, 'w') as f:
+            # Write header
+            f.write("MFEM mesh v1.0\n\n")
+            
+            # Write dimension
+            dim = 3
+            f.write("dimension\n")
+            f.write(str(dim) + "\n\n")
+            
+            # Write elements
+            NC = self.number_of_cells()
+            f.write("elements\n")
+            f.write(str(NC) + "\n")
+
+            cellattr = np.ones(NC, dtype=np.int_)
+            if 'attributes' in self.celldata:
+                cellattr = self.celldata['attributes']
+            cell = self.entity('cell')
+            for i in range(NC):
+                attr = cellattr[i]
+                geom_type = '4'
+                s = " ".join([str(j) for j in cell[i]])
+                f.write(str(attr) + " " + geom_type + " " + s + "\n")
+            f.write("\n")
+            
+            # Write boundary
+            isBdFace = self.ds.boundary_face_flag()
+            boundary = self.entity('face')[isBdFace]
+
+            NB = np.sum(isBdFace)
+            faceattr = np.ones(NB, dtype=np.int_)
+            if 'attributes' in self.facedata:
+                faceattr = self.facedata['attributes'][isBdFace]
+
+            f.write("boundary\n")
+            f.write(str(NB) + "\n")
+            for i in range(NB):
+                attr = faceattr[i]
+                geom_type = '2'
+                s = " ".join([str(j) for j in boundary[i]])
+                f.write(str(attr) + " " + geom_type + " " + s + "\n")
+            f.write("\n")
+            
+            # Write vertices
+            NN = self.number_of_nodes()
+            node = self.entity('node')
+            vdim = node.shape[1]
+
+            f.write("vertices\n")
+            f.write(str(NN) + "\n")
+            f.write(str(vdim) + "\n")
+            for i in range(NN):
+                x = node[i]
+                s = " ".join([str(x[j]) for j in range(vdim)])
+                f.write(s + "\n")
+
+
