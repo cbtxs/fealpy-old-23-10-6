@@ -339,7 +339,7 @@ class TriangleMesh(Mesh2d):
         NC = self.number_of_cells()
         return NN + (p-1)*NE + (p-2)*(p-1)//2*NC
 
-    def interpolation_points(self, p, index=np.s_[:]):
+    def interpolation_points(self, p: int, index=np.s_[:]):
         """
         @brief 获取三角形网格上所有 p 次插值点
         TODO index
@@ -837,13 +837,13 @@ class TriangleMesh(Mesh2d):
         center = (bins[:-1] + bins[1:]) / 2
         axes.bar(center, hist, align='center', width=0.02)
         axes.set_xlim(0, 1)
-        axes.annotate('Min quality: {:.6}'.format(minq), xy=(0.1, 0.5),
+        axes.annotate('Min quality: {:.6}'.format(minq), xy=(0,0),xytext=(0.1, 0.5),
                 textcoords='axes fraction',
                 horizontalalignment='left', verticalalignment='top')
-        axes.annotate('Max quality: {:.6}'.format(maxq), xy=(0.1, 0.45),
+        axes.annotate('Max quality: {:.6}'.format(maxq), xy=(0,0),xytext=(0.1, 0.45),
                 textcoords='axes fraction',
                 horizontalalignment='left', verticalalignment='top')
-        axes.annotate('Average quality: {:.6}'.format(meanq), xy=(0.1, 0.40),
+        axes.annotate('Average quality: {:.6}'.format(meanq), xy=(0,0),xytext=(0.1, 0.40),
                 textcoords='axes fraction',
                 horizontalalignment='left', verticalalignment='top')
         return minq, maxq, meanq
@@ -890,6 +890,65 @@ class TriangleMesh(Mesh2d):
                 NN = self.number_of_nodes()
                 self.ds.reinit(NN, cell)
 
+    def odt_iterate(self):
+        node = self.node.copy()
+        cell = self.ds.cell
+        alpha = 1
+
+        NN = self.number_of_nodes()
+        NC = self.number_of_cells()
+        
+        isBdNode = self.ds.boundary_node_flag()
+        isBdCell = self.ds.boundary_cell_flag()
+        isFreeNode = ~isBdNode
+
+        cm = self.entity_measure("cell") # 单元面积
+        cb = self.entity_barycenter('cell') # 单元重心
+        cc = self.circumcenter() # 单元外心
+        cc[isBdCell] = cb[isBdCell]
+        cc = cm[...,None]*cc
+
+        newNode = np.zeros((NN,2),dtype=np.float64)
+        patch_area = np.zeros(NN,dtype=np.float64)
+        
+        np.add.at(newNode,cell,np.broadcast_to(cc[:,None],(NC,3,2)))
+        np.add.at(patch_area,cell,np.broadcast_to(cm[:,None],(NC,3))) 
+        
+        newNode[isBdNode] = node[isBdNode]
+        newNode[isFreeNode] = newNode[isFreeNode]/patch_area[...,None][isFreeNode]
+        self.node = newNode
+        while np.sum(cm<=0)>0:
+            self.node[isFreeNode] = (1-alpha/2)*node[isFreeNode]+alpha*newNode[isFreeNode]
+        self.edge_swap()
+
+    def cpt_iterate(self):
+        node = self.node.copy()
+        cell = self.ds.cell
+        alpha = 1
+
+        NN = self.number_of_nodes()
+        NC = self.number_of_cells()
+        
+        isBdNode = self.ds.boundary_node_flag()
+        isBdCell = self.ds.boundary_cell_flag()
+        isFreeNode = ~isBdNode
+
+        cm = self.entity_measure("cell") # 单元面积
+        cb = self.entity_barycenter('cell') # 单元重心
+        cb = cm[...,None]*cb
+
+        newNode = np.zeros((NN,2),dtype=np.float64)
+        patch_area = np.zeros(NN,dtype=np.float64)
+        
+        np.add.at(newNode,cell,np.broadcast_to(cb[:,None],(NC,3,2)))
+        np.add.at(patch_area,cell,np.broadcast_to(cm[:,None],(NC,3))) 
+        
+        newNode[isBdNode] = node[isBdNode]
+        newNode[isFreeNode] = newNode[isFreeNode]/patch_area[...,None][isFreeNode]
+        self.node = newNode
+        while np.sum(cm<=0)>0:
+            self.node[isFreeNode] = (1-alpha/2)*node[isFreeNode]+alpha*newNode[isFreeNode]
+        self.edge_swap()
 
     def uniform_bisect(self, n=1):
         for i in range(n):
@@ -2079,7 +2138,7 @@ class TriangleMesh(Mesh2d):
 
 
 class TriangleMeshWithInfinityNode:
-    def __init__(self, mesh):
+    def __init__(self, mesh, bc=True):
         edge = mesh.ds.edge
         bdEdgeIdx = mesh.ds.boundary_edge_index()
         NBE = len(bdEdgeIdx)
@@ -2097,8 +2156,14 @@ class TriangleMeshWithInfinityNode:
         node = mesh.node
         self.node = np.append(node, [[np.nan, np.nan]], axis=0)
         self.ds = TriangleMeshDataStructure(NN+1, newCell)
-        self.center = np.append(mesh.entity_barycenter(),
-                0.5*(node[edge[bdEdgeIdx, 0], :] + node[edge[bdEdgeIdx, 1], :]), axis=0)
+
+        if bc:
+            self.center = np.append(mesh.entity_barycenter(),
+                    0.5*(node[edge[bdEdgeIdx, 0], :] + node[edge[bdEdgeIdx, 1], :]), axis=0)
+        else:
+            self.center = np.append(mesh.circumcenter(),
+                    0.5*(node[edge[bdEdgeIdx, 0], :] + node[edge[bdEdgeIdx, 1], :]), axis=0)
+
         self.meshtype = 'tri'
 
     def number_of_nodes(self):

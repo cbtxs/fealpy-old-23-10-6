@@ -18,6 +18,8 @@ from .RaviartThomasFiniteElementSpace3d import RaviartThomasFiniteElementSpace3d
 from .FirstKindNedelecFiniteElementSpace2d import FirstKindNedelecFiniteElementSpace2d
 from .FirstNedelecFiniteElementSpace2d import FirstNedelecFiniteElementSpace2d
 from .FirstNedelecFiniteElementSpace3d import FirstNedelecFiniteElementSpace3d
+from .first_nedelec_fe_on_triangle_mesh import FirstNedelecFEOnTriangleMesh
+
 
 # PFEM
 from .ParametricLagrangeFiniteElementSpace import ParametricLagrangeFiniteElementSpace
@@ -28,7 +30,10 @@ from .ConformingVirtualElementSpace2d import CVEMDof2d, ConformingVirtualElement
 from .NonConformingVirtualElementSpace2d import NCVEMDof2d, NonConformingVirtualElementSpace2d
 from .DivFreeNonConformingVirtualElementSpace2d import DivFreeNonConformingVirtualElementSpace2d
 from .ReducedDivFreeNonConformingVirtualElementSpace2d import ReducedDivFreeNonConformingVirtualElementSpace2d
-from .conforming_navier_stokes_vem_space_2d import ConformingNavierStokesVEMSpace2d
+
+from .conforming_vector_ve_space_2d import ConformingVectorVESpace2d
+from .conforming_scalar_ve_space_2d import ConformingScalarVESpace2d
+
 # WG
 from .WeakGalerkinSpace2d import WeakGalerkinSpace2d
 

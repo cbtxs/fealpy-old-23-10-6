@@ -9,7 +9,6 @@ from scipy.sparse import spdiags
 from scipy.sparse.linalg import spsolve
 import matplotlib.pyplot as plt
 
-from fealpy.mesh import MeshFactory
 from fealpy.pde.timeharmonic_2d import CosSinData, LShapeRSinData, InHomogeneousData
 from fealpy.functionspace import FirstKindNedelecFiniteElementSpace2d 
 from fealpy.functionspace import LagrangeFiniteElementSpace
@@ -244,14 +243,15 @@ elif args.pde == 'CS':
 mesh = pde.init_mesh(n=args.nrefine)
 
 mesh.add_plot(plt)
-plt.savefig('./test-' + str(0) + '.eps')
+plt.savefig('./test-' + str(0) + '.png')
 plt.close()
 
 errorType = ['$|| u - u_h||_{\Omega,0}$',
              '$||\\nabla\\times u - \\nabla\\times u_h||_{\Omega, 0}$',
              '$|| u - R_h[u_h]||_{\Omega,0}$',
              '$||\\nabla\\times u - R_h[\\nabla\\times u_h]||_{\Omega, 0}$',
-             'eta'
+             'eta0',
+             'eta1'
              ]
 errorMatrix = np.zeros((len(errorType), args.maxit), dtype=np.float64)
 NDof = np.zeros(args.maxit, dtype=np.float64)
@@ -289,19 +289,20 @@ for i in range(args.maxit):
     errorMatrix[3, i] = space.integralalg.L2_error(pde.curl, rcuh)
 
     # 计算单元上的恢复型误差
-    eta0 = space.integralalg.error(uh.curl_value, 
-            rcuh, power=2, celltype=True) # eta_K
-    eta1 = space.integralalg.error(uh.value,  
+    eta0 = space.integralalg.error(uh.value,  
             ruh, power=2, celltype=True) # xi_K
+    eta1 = space.integralalg.error(uh.curl_value, 
+            rcuh, power=2, celltype=True) # eta_K
     eta = np.sqrt(eta0**2 + eta1**2) # S_K
-    errorMatrix[4, i] = np.sqrt(np.sum(eta**2)) # S_h
+    errorMatrix[4, i] = np.sqrt(np.sum(eta0**2)) # S_h
+    errorMatrix[5, i] = np.sqrt(np.sum(eta1**2)) # S_h
     if i < args.maxit - 1:
         isMarkedCell = mark(eta, theta=args.theta)
         mesh.bisect(isMarkedCell)
         mesh.add_plot(plt)
-        plt.savefig('./test-' + str(i+1) + '.eps')
+        plt.savefig('./test-' + str(i+1) + '.png')
         plt.close()
 
 showmultirate(plt, args.maxit-10, NDof, errorMatrix,  errorType, propsize=6)
-plt.savefig('./error.eps')
+plt.savefig('./error.png')
 plt.show()
