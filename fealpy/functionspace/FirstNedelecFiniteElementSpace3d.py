@@ -279,8 +279,10 @@ class FirstNedelecFiniteElementSpace3d:
 
             if isinstance(c, (int, float)):
                 M = np.einsum('q, qcld, qcmd, c->clm', c*ws, phi, phi, cellmeasure, optimize=True)
-            else:
+            elif(len(c.shape)==4):
                 M = np.einsum('q, qcnd, qckn, qcmd, c->ckm', ws, c, phi, phi, cellmeasure, optimize=True)
+            else:
+                M = np.einsum('q, qc, qckn, qcmd, c->ckm', ws, c, phi, phi, cellmeasure, optimize=True)
 
         cell2dof = self.cell_to_dof()
         I = np.broadcast_to(cell2dof[..., None], M.shape)

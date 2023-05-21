@@ -1248,7 +1248,7 @@ class TetrahedronMesh(Mesh3d):
         print("Cell2face:")
         print_cpp_array(self.ds.cell_to_face())
 
-    def to_mfem_file(self, filename):
+    def to_mfem_file(self, filename, isBdFace=None):
         """!
         @brief 将网格保存为 MFEM 网格文件格式
                格式类型见 : https://mfem.org/mesh-format-v1.0/
@@ -1280,7 +1280,8 @@ class TetrahedronMesh(Mesh3d):
             f.write("\n")
             
             # Write boundary
-            isBdFace = self.ds.boundary_face_flag()
+            if isBdFace is None:
+                isBdFace = self.ds.boundary_face_flag()
             boundary = self.entity('face')[isBdFace]
 
             NB = np.sum(isBdFace)
