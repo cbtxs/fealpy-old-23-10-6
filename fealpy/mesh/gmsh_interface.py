@@ -1,55 +1,35 @@
-import gmsh
 import numpy as np
-from fealpy.mesh import TetrahedronMesh
 
-def tra(mol):
-    mol.occ.translate([(2, 1)], 0, 0, 1.59)
+def gmsh_to_fealpy(mol, cls, dim, NVC):
+    # get mesh information
+    node = mol.mesh.get_nodes()[1].reshape(-1, 3)
+    NN = node.shape[0]
 
-# Initialize gmsh
-gmsh.initialize()
+    nid2tag = mol.mesh.get_nodes()[0]
+    tag2nid = np.zeros(NN*2, dtype = np.int_)
+    tag2nid[nid2tag] = np.arange(NN)
 
-# Create a new model
-model = gmsh.model
+    cell = mol.mesh.get_elements(dim, -1)[2][0].reshape(-1, NVC)
+    cell = tag2nid[cell]
 
-# Set the model's dimension to 3D
-model.add("3D")
+    # Construct FEALPy mesh
+    mesh = cls(node, cell)
 
-# Define the parameters
-w = [1.3, 3.93, 89.6]
-l = [12.32, 18.48, 1.3]
+    # Get node tag and dim
+    dims = np.zeros(NN)
+    tags = np.zeros(NN)
+    for i in range(dim+1)[::-1]:
+        dimtags = mol.getEntities(i)
+        for dim, tag in dimtags:
+            idx = mol.mesh.get_elements(dim, tag)[2]
+            if(len(idx)>0):
+                idx = tag2nid[idx[0]]
+                tags[idx] = tag
+                dims[idx] = i
 
-poly = [(2, 1)]
-#ends = [(-89.6, 0)]
-ends = [(0, 0)]
-ends0 = []
-for i in range(4):
-    w[2] = 89.6/2**i + 1.3
-    for p in ends:
-        rec = model.occ.add_rectangle(p[0]-w[0]/2, p[1],           0, w[0], -l[0])
-        model.occ.fuse(poly, [(2, rec)])
-        if i < 3:
-            rec = model.occ.add_rectangle(p[0]-w[1]/2, p[1]-l[0],      0, w[1], -l[1])
-            model.occ.fuse(poly, [(2, rec)])
-            rec = model.occ.add_rectangle(p[0]-w[2]/2, p[1]-l[0]-l[1], 0, w[2], -l[2])
-            model.occ.fuse(poly, [(2, rec)])
-            ends0.append((p[0]-89.6/2**(i+1), p[1]-l[0]-l[1]-l[2]))
-            ends0.append((p[0]+89.6/2**(i+1), p[1]-l[0]-l[1]-l[2]))
-
-    ends = ends0.copy()
-    ends0 = []
-
-#model.occ.translate([(2, 1)], 0, 0, 1.59)
-tra(model)
-model.occ.synchronize()
-gmsh.fltk.initialize()
-gmsh.fltk.run()
-
-points = np.random.rand(10, 3)
-cv, pv = model.getClosestPoint(2, 1, points.flatten())
-print(cv)
-
-
-# Finalize gmsh
-gmsh.finalize()
+    mesh.nodedata['tag'] = tags
+    mesh.nodedata['dim'] = dims
+    mesh.celldata['z'] = mesh.entity_barycenter('cell')[:, -1]
+    return mesh
 
 
