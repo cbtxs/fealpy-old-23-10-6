@@ -57,9 +57,9 @@ class VectorSourceIntegrator():
         ldof = space[0].number_of_local_dofs() 
         if out is None:
             if space[0].doforder == 'sdofs': # 标量基函数自由度排序优先
-                bb = np.zeros((NC, GD, ldof), dtype=space.ftype)
+                bb = np.zeros((NC, GD, ldof), dtype=space[0].ftype)
             elif space[0].doforder == 'vdims': # 向量分量自由度排序优先
-                bb = np.zeros((NC, ldof, GD), dtype=space.ftype)
+                bb = np.zeros((NC, ldof, GD), dtype=space[0].ftype)
         else:
             bb = out
 
@@ -82,7 +82,6 @@ class VectorSourceIntegrator():
                 val = f(ps)
         else:
             val = f
-
         if isinstance(val, (int, float)):
             if space[0].doforder == 'sdofs':
                 bb += val*np.einsum('q, qci, c->ci', ws, phi, cellmeasure, optimize=True)[:, None, :]
@@ -104,7 +103,6 @@ class VectorSourceIntegrator():
                     bb += np.einsum('q, qcd, qci, c->cdi', ws, val, phi, cellmeasure, optimize=True)
                 elif space[0].doforder == 'vdims':
                     bb += np.einsum('q, qcd, qci, c->cid', ws, val, phi, cellmeasure, optimize=True)
-
         if out is None:
             return bb 
 

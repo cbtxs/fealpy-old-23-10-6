@@ -4,12 +4,13 @@ from numpy.typing import NDArray
 from scipy.sparse import coo_matrix, csr_matrix
 
 from ...common import ranges
-from .mesh_ds import MeshDataStructure, StructureMeshDS
+from .mesh_ds import HomogeneousMeshDS, StructureMeshDS
+from .sparse_tool import arr_to_csr
 
 
-class Mesh3dDataStructure(MeshDataStructure):
+class Mesh3dDataStructure(HomogeneousMeshDS):
     """
-    @brief The topology data structure of 3-d mesh.\
+    @brief The topology data structure of 3-d homogeneous mesh.\
            This is an abstract class and can not be used directly.
     """
     # Variables
@@ -18,63 +19,26 @@ class Mesh3dDataStructure(MeshDataStructure):
 
     # Constants
     TD: int = 3
+    localFace2edge: NDArray
+    localEdge2face: NDArray
 
-    ### Cell ###
-
-    def cell_to_edge(self, return_sparse=False):
-        """ The neighbor information of cell to edge
+    def number_of_edges_of_faces(self):
         """
-        if return_sparse is False:
+        @brief Return the number of edges in a face, and is only available in 3d mesh.
+
+        This is equal to the length of `localFace2edge` in axis-1.
+        """
+        return self.localFace2edge.shape[1]
+
+
+    ### Special Topology APIs for Non-structures ###
+
+    def cell_to_edge(self, return_sparse=False, return_local=False):
+        if not return_sparse:
             return self.cell2edge
         else:
-            NC = self.number_of_cells()
-            NE = self.number_of_edges()
-            cell2edge = coo_matrix((NC, NE), dtype=np.bool_)
-            NEC = self.number_of_edges_of_cells()
-            cell2edge = csr_matrix(
-                    (
-                        np.ones(NEC*NC, dtype=np.bool_),
-                        (
-                            np.repeat(range(NC), NEC),
-                            self.cell2edge.flat
-                        )
-                    ), shape=(NC, NE))
-            return cell2edge
-
-    def cell_to_edge_sign(self, cell=None):
-        """
-        TODO: check here
-        """
-        if cell==None:
-            cell = self.cell
-        NC = self.number_of_cells()
-        NEC = self.number_of_edges_of_cells()
-        cell2edgeSign = np.zeros((NC, NEC), dtype=np.bool_)
-        localEdge = self.localEdge
-        E = localEdge.shape[0]
-        for i, (j, k) in zip(range(E), localEdge):
-            cell2edgeSign[:, i] = cell[:, j] < cell[:, k]
-        return cell2edgeSign
-
-    def cell_to_face(self):
-        NC = self.number_of_cells()
-        NF = self.number_of_faces()
-        face2cell = self.face2cell
-        NFC = self.number_of_faces_of_cells()
-        cell2face = np.zeros((NC, NFC), dtype=self.itype)
-        cell2face[face2cell[:, 0], face2cell[:, 2]] = range(NF)
-        cell2face[face2cell[:, 1], face2cell[:, 3]] = range(NF)
-        return cell2face
-
-    def cell_to_face_sign(self):
-        """
-        """
-        NC = self.number_of_cells()
-        face2cell = self.face2cell
-        NFC = self.number_of_faces_of_cells()
-        cell2facesign = np.zeros((NC, NFC), dtype=np.bool_)
-        cell2facesign[face2cell[:, 0], face2cell[:, 2]] = True
-        return cell2facesign
+            return arr_to_csr(self.cell2edge, self.number_of_edges(),
+                              return_local=return_local, dtype=self.itype)
 
     def cell_to_cell(
             self, return_sparse=False,
@@ -90,7 +54,7 @@ class Mesh3dDataStructure(MeshDataStructure):
 
         face2cell = self.face2cell
         if (return_sparse is False) and (return_array is False):
-            NFC = self.NFC
+            NFC = self.number_of_faces_of_cells()
             cell2cell = np.zeros((NC, NFC), dtype=self.itype)
             cell2cell[face2cell[:, 0], face2cell[:, 2]] = face2cell[:, 1]
             cell2cell[face2cell[:, 1], face2cell[:, 3]] = face2cell[:, 0]
@@ -129,7 +93,32 @@ class Mesh3dDataStructure(MeshDataStructure):
                 return adj.astype(np.int32), adjLocation
 
 
-    ### face ###
+    ### General Topology APIs ###
+
+    def cell_to_edge_sign(self, cell=None):
+        """
+        TODO: check here
+        """
+        if cell==None:
+            cell = self.cell
+        NC = self.number_of_cells()
+        NEC = self.number_of_edges_of_cells()
+        cell2edgeSign = np.zeros((NC, NEC), dtype=np.bool_)
+        localEdge = self.localEdge
+        E = localEdge.shape[0]
+        for i, (j, k) in zip(range(E), localEdge):
+            cell2edgeSign[:, i] = cell[:, j] < cell[:, k]
+        return cell2edgeSign
+
+    def cell_to_face_sign(self):
+        """
+        """
+        NC = self.number_of_cells()
+        face2cell = self.face2cell
+        NFC = self.number_of_faces_of_cells()
+        cell2facesign = np.zeros((NC, NFC), dtype=np.bool_)
+        cell2facesign[face2cell[:, 0], face2cell[:, 2]] = True
+        return cell2facesign
 
     def face_to_edge(self, return_sparse=False):
         cell2edge = self.cell2edge
@@ -144,7 +133,7 @@ class Mesh3dDataStructure(MeshDataStructure):
         else:
             NF = self.number_of_faces()
             NE = self.number_of_edges()
-            NEF = self.NEF
+            NEF = self.number_of_edges_of_faces()
             f2e = csr_matrix(
                     (
                         np.ones(NEF*NF, dtype=np.bool_),
@@ -159,25 +148,6 @@ class Mesh3dDataStructure(MeshDataStructure):
         face2edge = self.face_to_edge(return_sparse=True)
         return face2edge*face2edge.T
 
-    def face_to_cell(self, return_sparse=False):
-        if return_sparse is False:
-            return self.face2cell
-        else:
-            NC = self.number_of_cells()
-            NF = self.number_of_faces()
-            face2cell = csr_matrix(
-                    (
-                        np.ones(2*NF, dtype=np.bool_),
-                        (
-                            np.repeat(range(NF), 2),
-                            self.face2cell[:, [0, 1]].flat
-                        )
-                    ), shape=(NF, NC), dtype=np.bool_)
-            return face2cell
-
-
-    ### edge ###
-
     def edge_to_edge(self):
         edge2node = self.edge_to_node(return_sparse=True)
         return edge2node*edge2node.T
@@ -186,7 +156,7 @@ class Mesh3dDataStructure(MeshDataStructure):
         NF = self.number_of_faces()
         NE = self.number_of_edges()
         face2edge = self.face_to_edge()
-        NEF = self.NEF
+        NEF = self.number_of_edges_of_faces()
         edge2face = csr_matrix(
                 (
                     np.ones(NEF*NF, dtype=np.bool_),
@@ -216,9 +186,6 @@ class Mesh3dDataStructure(MeshDataStructure):
             raise ValueError("Need to implement!")
 
         return edge2cell
-
-
-    ### Node ###
 
     def node_to_node(self):
         """ The neighbor information of nodes
