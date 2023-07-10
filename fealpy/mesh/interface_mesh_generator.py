@@ -5,14 +5,13 @@ import numpy as np
 from scipy.spatial import Delaunay
 
 
-from .PolygonMesh import PolygonMesh
-from .PolyhedronMesh import PolyhedronMesh 
+from .polygon_mesh import PolygonMesh
+from .polyhedron_mesh import PolyhedronMesh 
 
 
-from .StructureHexMesh import StructureHexMesh
+from .structure_mesh_3d import StructureHexMesh
 from .StructureQuadMesh import StructureQuadMesh 
-from .TetrahedronMesh import TetrahedronMesh
-from .PolyhedronMesh import PolyhedronMesh 
+from .tetrahedron_mesh import TetrahedronMesh
 from .TriangleMesh import TriangleMesh
 from fealpy.mesh import MeshFactory as mf
 

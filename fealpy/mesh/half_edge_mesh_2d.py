@@ -453,11 +453,11 @@ class HalfEdgeMesh2d(Mesh, Plotable):
             p = np.einsum('...j, ijk->...ik', bc, node[entity])
         return p
 
-    def entity(self, etype=2):
+    def entity(self, etype=2, index=np.s_[:]):
         if etype in {'cell', 2}:
-            return self.ds.cell_to_node()
+            return self.ds.cell_to_node()[index]
         elif etype in {'edge', 'face', 1}:
-            return self.ds.edge_to_node()
+            return self.ds.edge_to_node()[index]
         elif etype in {'halfedge'}:
             return self.ds.halfedge # DynamicArray
         elif etype in {'node', 0}:
@@ -467,6 +467,12 @@ class HalfEdgeMesh2d(Mesh, Plotable):
 
     def geo_dimension(self):
         return self.node.shape[1]
+
+    def entity_measure(self, etype='cell', index=np.s_[:]):
+        if etype=='cell':
+            return self.cell_area(index)
+        elif etype in ['edge', 'face']:
+            return self.edge_length(index)
 
     def entity_barycenter(self, etype='cell', index=np.s_[:]):
         node = self.entity('node')
@@ -697,8 +703,8 @@ class HalfEdgeMesh2d(Mesh, Plotable):
         NE = self.number_of_edges()
 
         hlevel = self.halfedgedata['level']
-        halfedge = self.entity('halfedge')
-        node = self.entity('node')
+        halfedge = self.ds.halfedge
+        node = self.node
         hedge = self.ds.hedge
         subdomain = self.ds.subdomain
         isMainHEdge = self.ds.main_halfedge_flag()
@@ -2562,6 +2568,12 @@ class HalfEdgeMesh2dDataStructure():
         self.hedge[flag] = halfedge[self.hedge[flag], 4]
 
         self.NV = NV
+
+    def number_of_edges(self):
+        return len(self.halfedge)//2
+
+    def number_of_cells(self):
+        return self.number_of_all_cells()-self.cellstart
 
     def number_of_all_cells(self):
         return len(self.subdomain)

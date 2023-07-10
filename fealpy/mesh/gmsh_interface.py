@@ -2,7 +2,7 @@ import numpy as np
 
 def gmsh_to_fealpy(mol, cls, dim, NVC):
     # get mesh information
-    node = mol.mesh.get_nodes()[1].reshape(-1, 3)
+    node = mol.mesh.get_nodes()[1].reshape(-1, 3)[:, :dim]
     NN = node.shape[0]
 
     nid2tag = mol.mesh.get_nodes()[0]
