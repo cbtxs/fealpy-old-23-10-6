@@ -93,33 +93,37 @@ class Mesh():
             multiIndex[:, 1] = p - multiIndex[:, 0]
             return multiIndex
 
-    def _shape_function(self, bc, p=1):
+    def _shape_function(self, bc: NDArray, p: int =1, mi: NDArray=None):
         """
         @brief
+
+        @param[in] bc 
         """
         if p == 1:
             return bc
         TD = bc.shape[-1] - 1
-        multiIndex = self.multi_index_matrix(p, etype=TD)
+        if mi is None:
+            mi = self.multi_index_matrix(p, etype=TD)
         c = np.arange(1, p+1, dtype=np.int_)
         P = 1.0/np.multiply.accumulate(c)
         t = np.arange(0, p)
         shape = bc.shape[:-1]+(p+1, TD+1)
         A = np.ones(shape, dtype=self.ftype)
-        A[..., 1:, :] = p*bc[..., np.newaxis, :] - t.reshape(-1, 1)
+        A[..., 1:, :] = p*bc[..., None, :] - t.reshape(-1, 1)
         np.cumprod(A, axis=-2, out=A)
         A[..., 1:, :] *= P.reshape(-1, 1)
         idx = np.arange(TD+1)
-        phi = np.prod(A[..., multiIndex, idx], axis=-1)
+        phi = np.prod(A[..., mi, idx], axis=-1)
         return phi
 
-    def _grad_shape_function(self, bc: NDArray, p: int =1) -> NDArray:
+    def _grad_shape_function(self, bc: NDArray, p: int =1, mi: NDArray=None) -> NDArray:
         """
         @brief 计算形状为 (..., TD+1) 的重心坐标数组 bc 中, 每一个重心坐标处的 p 次 Lagrange 形函数值关于该重心坐标的梯度。
         """
         TD = bc.shape[-1] - 1
-        multiIndex = self.multi_index_matrix(p, etype=TD)
-        ldof = multiIndex.shape[0] # p 次 Lagrange 形函数的个数
+        if mi is None:
+            mi = self.multi_index_matrix(p, etype=TD)
+        ldof = mi.shape[0] # p 次 Lagrange 形函数的个数
 
         c = np.arange(1, p+1)
         P = 1.0/np.multiply.accumulate(c)
@@ -127,7 +131,7 @@ class Mesh():
         t = np.arange(0, p)
         shape = bc.shape[:-1]+(p+1, TD+1)
         A = np.ones(shape, dtype=bc.dtype)
-        A[..., 1:, :] = p*bc[..., np.newaxis, :] - t.reshape(-1, 1)
+        A[..., 1:, :] = p*bc[..., None, :] - t.reshape(-1, 1)
 
         FF = np.einsum('...jk, m->...kjm', A[..., 1:, :], np.ones(p))
         FF[..., range(p), range(p)] = p
@@ -139,8 +143,8 @@ class Mesh():
         np.cumprod(A, axis=-2, out=A)
         A[..., 1:, :] *= P.reshape(-1, 1)
 
-        Q = A[..., multiIndex, range(TD+1)]
-        M = F[..., multiIndex, range(TD+1)]
+        Q = A[..., mi, range(TD+1)]
+        M = F[..., mi, range(TD+1)]
 
         shape = bc.shape[:-1]+(ldof, TD+1)
         R = np.zeros(shape, dtype=bc.dtype)
@@ -149,6 +153,66 @@ class Mesh():
             idx.remove(i)
             R[..., i] = M[..., i]*np.prod(Q[..., idx], axis=-1)
         return R # (..., ldof, TD+1)
+
+    def _bernstein_shape_function(self, bc: NDArray, p: int=1, mi: NDArray=None):
+        """
+        @brief 
+        """
+        TD = bc.shape[1]-1
+        if mi is None:
+            mi = self.multi_index_matrix(p, TD)
+        ldof = mi.shape[0]
+
+        shape = bc.shape[:-1]+(p+1, TD+1)
+        B = np.ones(shape, dtype=bc.dtype)
+        B[..., 1:, :] = bc[..., None, :]
+        B = np.cumprod(B, axis=1)
+
+        P = np.arange(p+1)
+        P[0] = 1
+        P = np.cumprod(P)
+        B /= P[:, None]
+
+        # B : (NQ, p+1, TD+1) 
+        # B[:, multiIndex, np.arange(TD+1).reshape(1, -1)]: (NQ, ldof, TD+1)
+        phi = P[-1]*np.prod(B[:, mi, np.arange(TD+1).reshape(1, -1)], axis=-1)
+
+        return phi
+
+    def _grad_bernstein_shape_function(self, bc: NDArray, p: int=1, mi:
+            NDArray=None):
+        """
+        @brief 
+        """
+
+        TD = bc.shape[1]-1
+        if mi is None:
+            mi = self.multi_index_matrix(p, TD)
+        ldof = mi.shape[0]
+
+        shape = bc.shape[:-1] + (p+1, TD+1)
+        B = np.ones(shape, dtype=bc.dtype)
+        B[..., 1:, :] = bc[..., None, :]
+        B = np.cumprod(B, axis=1)
+
+        P = np.arange(p+1)
+        P[0] = 1
+        P = np.cumprod(P)
+        B /= P[:, None]
+
+        F = np.zeros(B.shape, dtype=bc.dtype)
+        F[:, 1:] = B[:, :-1]
+
+        shape = bc.shape[:-1]+(ldof, TD+1)
+        R = np.zeros(shape, dtype=bc.dtype)
+        for i in range(TD+1):
+            idx = list(range(TD+1))
+            idx.remove(i)
+            idx = np.array(idx, dtype=np.int_)
+            R[..., i] = np.prod(B[..., mi[:, idx], idx.reshape(1, -1)],
+                    axis=-1)*F[..., mi[:, i], [i]]
+
+        return P[-1]*R
 
     def shape_function(self, bc, p=1) -> NDArray:
         """
@@ -343,11 +407,11 @@ class Mesh():
                 elif v.coordtype == 'barycentric':
                     v = v(bcs)
 
-        #if u.shape[-1] == 1:
-        #    u = u[..., 0]
+        if u.shape[-1] == 1:
+           u = u[..., 0]
 
-        #if v.shape[-1] == 1:
-        #    v = v[..., 0]
+        if v.shape[-1] == 1:
+           v = v[..., 0]
 
         cm = self.entity_measure('cell')
 

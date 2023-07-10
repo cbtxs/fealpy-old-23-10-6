@@ -211,6 +211,15 @@ class PolygonMesh(Mesh, Plotable):
         return edge2ipoints
 
     face_to_ipoint = edge_to_ipoint
+    
+    def edge_normal(self, index=np.s_[:]):
+        """
+        @brief 计算二维网格中每条边上单位法线
+        """
+        assert self.geo_dimension() == 2
+        v = self.edge_tangent(index=index)
+        w = np.array([(0,-1),(1,0)])
+        return v@w
 
 
     def interpolation_points(self, p: int,
@@ -260,7 +269,7 @@ class PolygonMesh(Mesh, Plotable):
         tri[:, 1, :] = bc + t[1]*h
         tri[:, 2, :] = bc + t[2]*h
 
-        bcs = self.multi_index_matrix(p-2)/(p-2)
+        bcs = self.multi_index_matrix(p-2, 2)/(p-2)
         ipoint[start:] = np.einsum('ij, ...jm->...im', bcs, tri).reshape(-1, GD)
         return ipoint
 
@@ -363,6 +372,25 @@ class PolygonMesh(Mesh, Plotable):
         else:
             e = np.power(np.sum(e, axis=tuple(range(1, len(e.shape)))), 1/power)
         return e
+
+    @classmethod
+    def show_cvem_dofs(cls, p=5):
+        """
+        @brief 显示多边形单元上的自由度
+        """
+        import matplotlib.pyplot as plt
+        mesh = cls.from_one_pentagon()
+
+        fig = plt.figure()
+        for i in range(p):
+            axes = fig.add_subplot(1, p, i+1)
+            mesh.add_plot(axes, cellcolor=[0.5, 0.9, 0.45], edgecolor='k')
+            ips = mesh.interpolation_points(p=i+1)
+            mesh.find_node(axes, node=ips)
+            axes.set_title(f'$k={i+1}$')
+
+        plt.show()
+
 
     @classmethod
     def from_quadtree(cls, qtree):
