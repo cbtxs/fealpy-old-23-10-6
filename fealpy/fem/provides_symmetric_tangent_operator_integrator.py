@@ -1,94 +1,103 @@
 
 import numpy as np
+from typing import Optional, Union, Tuple
 
 class ProvidesSymmetricTangentOperatorIntegrator:
-    def __init__(self, lam, mu, uh, d, H):
-        self.lam = lam
-        self.mu = mu
-        self.uh = uh
-        self.d = d
-        self.kappa = self.lam + 2 * self.mu /3 # 压缩模量
-        self.H = H
-
-    def strain(self, uh):
+    def __init__(self, D, q: Optional[int]=None):
         """
-        @brief 给定一个位移，计算相应的应变，这里假设是线性元
+        初始化 ProvidesSymmetricTangentOperatorIntegrator 类
+
+        参数:
+        D : 切算子矩阵
+        q (Optional[int]): 积分阶次，默认为 None
         """
-        mesh = self.mesh
-        cell = mesh.entity('cell')
-        NC = mesh.number_of_cells()
-        gphi = mesh.grad_lambda()  # NC x 3 x 2
+        self._D = D
+        self.q = q
 
-        s = np.zeros((NC, 2, 2), dtype=np.float64)
-        s[:, 0, 0] = np.sum(uh[:, 0][cell] * gphi[:, :, 0], axis=-1)
-        s[:, 1, 1] = np.sum(uh[:, 1][cell] * gphi[:, :, 1], axis=-1)
-
-        val = np.sum(uh[:, 0][cell] * gphi[:, :, 1], axis=-1)
-        val += np.sum(uh[:, 1][cell] * gphi[:, :, 0], axis=-1)
-        val /= 2.0
-        s[:, 0, 1] = val
-        s[:, 1, 0] = val
-        return s
-    
-    def macaulay_operation(self, alpha):
+    def assembly_cell_matrix(self, space: Tuple, index=np.s_[:], 
+                             cellmeasure: Optional[np.ndarray]=None, 
+                             out: Optional[np.ndarray]=None) -> Optional[np.ndarray]:
         """
-        @brief 麦考利运算
+        构建切算子有限元矩阵
+
+        参数:
+        space (Tuple): 有限元空间
+        index (Union[np.s_, np.ndarray]): 选定的单元索引，默认为全部单元
+        cellmeasure (Optional[np.ndarray]): 对应单元的度量，默认为 None
+        out (Optional[np.ndarray]): 输出矩阵，默认为 None
+
+        返回:
+        Optional[np.ndarray]: 如果 out 参数为 None，则返回线性弹性有限元矩阵，否则不返回
         """
-        val = np.abs(alpha)
-        n = (alpha + val) / 2.0
-        p = (alpha - val) / 2.0
-        return n, p
-
-    def deviator(self, val):
-        """
-        @brief 计算偏差
-        """
-        '''
-        diff = val - np.mean(val, axis=(1, 2))
-        abs_val = np.abs(diff[:, ...])
-        dev = np.mean(abs_val)
-        '''
-        I = np.eye(2)
-        tr = np.trace(val)
-        dev = val - (1/3) * tr * I
-        return dev
-
-    def disp_tangent_operator(self):
-        uh = self.uh
-        kappa = self.kappa
-        mu = self.mu
-        d = self.d
-        H = self.H
-
-        s = self.strain(uh) # 计算应变
-        trs = np.trace(s, axis1=1, axis2=2) # 应变的迹
-        tp = np.maximum(trs, 0) # 正应变的迹
-        tn = trs - tp # 负应变的迹
-        trp, trn = self.macaulay_operation(trs) # 迹的麦考利运算
-        dev = self.deviator(s) # 应变的偏差
-        val = np.einsum('ijk, ijk -> i', dev, dev)
-        tsp = kappa * trp**2/2.0 + mu * val 
-#        H = max(tsp, H) # 更新历史函数
-       
-        # 计算应力
-        bc = np.array([1 / 3, 1 / 3, 1 / 3], dtype=np.float64)
-        g_d = (1-d(bc))**2 + 1e-10
-        sigma = np.einsum('i, ijk -> ijk', 2*mu*g_d, dev)
-        val = g_d * trp + trn
-        sigma[:, 0, 0] += val * kappa
-        sigma[:, 1, 1] += val * kappa
-
-        # 计算应力关于应变的偏导
-
-        return sigma
-
-
-
-    def assembly_cell_matrix(self, space, index=np.s_[:], cellmeasure=None, out=None):
         self.space = space[0]
         self.mesh = space[0].mesh
-        a = self.disp_tangent_operator()
-        print(a)
+        mesh = self.mesh
+        ldof = space[0].number_of_local_dofs()
+        p = space[0].p # 空间的多项式阶数
+        GD = mesh.geo_dimension()
+        q = self.q if self.q is not None else p+1
+
+        if GD == 2:
+            # 每个元组代表一个弹性张量的二阶导数的索引对
+            idx = [(0, 0), (0, 1),  (1, 1)]
+            # 将 idx 中的元组映射到一个整数上
+            imap = {(0, 0):0, (0, 1):1, (1, 1):2}
+        elif GD == 3:
+            idx = [(0, 0), (0, 1), (0, 2), (1, 1), (1, 2), (2, 2)]
+            imap = {(0, 0):0, (0, 1):1, (0, 2):2, (1, 1):3, (1, 2):4, (2, 2):5}
+
+
+        if cellmeasure is None:
+            cellmeasure = mesh.entity_measure('cell', index=index)
+
+        A = []
+        D = self._D
+
+        qf =  mesh.integrator(q, 'cell')
+        bcs, ws = qf.get_quadrature_points_and_weights()
+        grad = space[0].grad_basis(bcs, index=index) # (NQ, NC, ldof, GD)
+
+        NC = len(cellmeasure)
+
+        if out is None:
+            K = np.zeros((NC, GD*ldof, GD*ldof), dtype=np.float64)
+        else:
+            assert out.shape == (NC, GD*ldof, GD*ldof)
+            K = out
+
+        # 对于每一个设定的索引对，利用四边形积分公式和基函数的梯度来计算一个积分项
+        A = [np.einsum('i, ijm, ijn, j->jmn', ws, grad[..., i], grad[..., j], 
+                       cellmeasure, optimize=True) for i, j in idx]
+        d00 = D[..., 0, 0]
+        d01 = D[..., 0, 1]
+        d02 = D[..., 0, 2]
+        d11 = D[..., 1, 1]
+        d12 = D[..., 1, 2]
+        d22 = D[..., 2, 2]
+
+        # 默认标量自由度排序优先
+        K[:, 0:ldof, 0:ldof] += np.einsum('i,ijm->ijm', d00, A[imap[(0, 0)]])
+        K[:, 0:ldof, 0:ldof] += np.einsum('i,ijm->ijm', d02, A[imap[(0, 1)]])
+        K[:, 0:ldof, 0:ldof] += np.einsum('i,ijm->ijm', d02, A[imap[(0, 1)]].transpose(0, 2, 1))
+        K[:, 0:ldof, 0:ldof] += np.einsum('i,ijm->ijm', d22, A[imap[(1, 1)]])
+        
+        K[:, 0:ldof, ldof:2*ldof] += np.einsum('i,ijm->ijm', d01, A[imap[(0, 1)]])
+        K[:, 0:ldof, ldof:2*ldof] += np.einsum('i,ijm->ijm', d12, A[imap[(1, 1)]])
+        K[:, 0:ldof, ldof:2*ldof] += np.einsum('i,ijm->ijm', d22, A[imap[(0, 1)]].transpose(0, 2, 1))
+        K[:, 0:ldof, ldof:2*ldof] += np.einsum('i,ijm->ijm', d02, A[imap[(0, 0)]])
+        
+        K[:, ldof:2*ldof, 0:ldof] += np.einsum('i,ijm->ijm', d01, A[imap[(0, 1)]].transpose(0, 2, 1))
+        K[:, ldof:2*ldof, 0:ldof] += np.einsum('i,ijm->ijm', d12, A[imap[(1, 1)]])
+        K[:, ldof:2*ldof, 0:ldof] += np.einsum('i,ijm->ijm', d22, A[imap[(0, 1)]])
+        K[:, ldof:2*ldof, 0:ldof] += np.einsum('i,ijm->ijm', d02, A[imap[(0, 0)]])
+        
+        K[:, ldof:2*ldof, ldof:2*ldof] += np.einsum('i,ijm->ijm', d11, A[imap[(1, 1)]])
+        K[:, ldof:2*ldof, ldof:2*ldof] += np.einsum('i,ijm->ijm', d12, A[imap[(0, 1)]])
+        K[:, ldof:2*ldof, ldof:2*ldof] += np.einsum('i,ijm->ijm', d12, A[imap[(0, 1)]].transpose(0, 2, 1))
+        K[:, ldof:2*ldof, ldof:2*ldof] += np.einsum('i,ijm->ijm', d22, A[imap[(0, 0)]])
+
+        if out is None:
+            return K
 
 
     def assembly_cell_matrix_fast(self, space0, _, index=np.s_[:], cellmeasure=None):

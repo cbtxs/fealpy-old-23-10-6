@@ -18,40 +18,50 @@ class StackStd(Module):
     then the shape of output is (N, M, D); where N is samples, M is number of
     centers to standardize and D is features.
     """
-    def __init__(self, centers: Tensor, radius: float):
+    def __init__(self, centers: Tensor, radius: float, device=None):
         super().__init__()
-        self.centers = centers
-        self.radius = radius
+        self.centers = Parameter(centers.to(device=device), requires_grad=False)
+        self.radius = Parameter(
+            torch.tensor(radius, device=self.centers.device),
+            requires_grad=False
+        )
 
     def forward(self, p: Tensor):
-        return (p[:, None, :] - self.centers[None, ...]) / self.radius
+        return (p[:, None, :] - self.centers[None, :, :]) / self.radius
 
 
 class MultiLinear(Module):
     def __init__(self, in_features: int, out_features: int, parallel: Sequence[int],
-                 bias: bool=True, device=None, dtype=None) -> None:
+                 bias: bool=True, device=None, dtype=None, requires_grad=True) -> None:
         factory_kwargs = {'device': device, 'dtype': dtype}
         super().__init__()
         self.ni = in_features
         self.no = out_features
         self.p = tuple(parallel)
-        self.weight = Parameter(torch.empty(self.p + (self.ni, self.no), **factory_kwargs))
+        self.weight = Parameter(
+            torch.empty(self.p + (self.ni, self.no), **factory_kwargs),
+            requires_grad=requires_grad
+        )
         if bias:
-            self.bias = Parameter(torch.empty(self.p + (self.no, ), **factory_kwargs))
+            self.bias = Parameter(
+                torch.empty(self.p + (self.no, ), **factory_kwargs),
+                requires_grad=requires_grad
+            )
         else:
             self.register_parameter('bias', None)
         self.reset_parameters()
 
     def reset_parameters(self):
-        fan_in = self.weight.shape[-2]
-        gain = init.calculate_gain('leaky_relu', math.sqrt(5))
-        std = gain / math.sqrt(fan_in)
-        bound = math.sqrt(3.0) * std  # Calculate uniform bounds from standard deviation
+        # fan_in = self.weight.shape[-2]
+        # gain = init.calculate_gain('leaky_relu', math.sqrt(5))
+        # std = gain / math.sqrt(fan_in)
+        # bound = math.sqrt(3.0) * std
+        bound = 1
         with torch.no_grad():
             self.weight.uniform_(-bound, bound)
 
         if self.bias is not None:
-            bound = 1 / math.sqrt(fan_in)
+            # bound = 1 / math.sqrt(fan_in)
             init.uniform_(self.bias, -bound, bound)
 
     def forward(self, x: Tensor):

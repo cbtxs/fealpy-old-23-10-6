@@ -1,3 +1,4 @@
+from matplotlib.projections import Axes3D
 import numpy as np
 import warnings
 
@@ -12,7 +13,7 @@ from .mesh_base import Mesh, Plotable
 # 这个数据接口为有限元服务
 from .mesh_data_structure import StructureMesh2dDataStructure
 from ..quadrature import TensorProductQuadrature, GaussLegendreQuadrature
-from ..geometry import project
+from ..geometry import project, find_cut_point, msign
 
 ## @defgroup FEMInterface
 ## @defgroup FDMInterface
@@ -159,20 +160,23 @@ class UniformMesh2d(Mesh, Plotable):
         return axes.plot_surface(node[..., 0], node[..., 1], uh, cmap=cmap)
 
     ## @ingroup GeneralInterface
-    def show_animation(self, fig: Figure, axes: Axes, box: List[float],
-                    advance: Callable[[int, Any], Tuple[np.ndarray, float]],
+    def show_animation(self, 
+                    fig: Figure, 
+                    axes: Union[Axes, Axes3D], 
+                    box: List[float],
+                    advance: Callable[[int], Tuple[np.ndarray, float]],
                     fname: str = 'test.mp4',
                     init: Optional[Callable] = None,
                     fargs: Optional[Callable] = None,
-                    frames: np.int_ = 1000,
-                    interval: np.int_ = 50,
+                    frames: int = 1000,
+                    interval: int = 50,
                     plot_type: str = 'imshow',
                     cmap='rainbow') -> None:
         """
         @brief 生成求解过程动画并保存为指定文件名的视频文件
 
         @param fig         : plt.Figure | matplotlib 图形对象
-        @param axes        : Union[plt.Axes, Axes3D] | matplotlib 坐标轴对象
+        @param axes        : Union[Axes, Axes3D] | matplotlib 坐标轴对象
         @param box         : list      | 定义图像显示范围
         @param advance     : Callable   | 用于更新求解过程的函数
         @param plot_type   : str, 可选  | 默认值为 'imshow',要显示的绘图类型('imshow', 'surface', 'contourf')
@@ -185,45 +189,52 @@ class UniformMesh2d(Mesh, Plotable):
         # 创建动画所需的类和函数
         import matplotlib.animation as animation
         # 绘制颜色条的类
-        import matplotlib.colorbar as colorbar
+        from matplotlib.contour import QuadContourSet
+
 
         # 初始化二维网格数据
-        uh, t = advance(0)
-        if plot_type == 'imshow':
+        uh, _ = advance(0)
+        if isinstance(axes, Axes) and plot_type == 'imshow':
             data = axes.imshow(uh, cmap=cmap, vmin=box[4], vmax=box[5],
                     extent=box[0:4], interpolation='bicubic')
-        elif plot_type == 'surface':
+        elif isinstance(axes, Axes3D) and plot_type == 'surface':
             X = self.node[..., 0]
             Y = self.node[..., 1]
             data = axes.plot_surface(X, Y, uh, linewidth=0, cmap=cmap, vmin=box[4],
-                    vmax=box[5], rstride=1, cstride=1)
+                                    vmax=box[5], rstride=1, cstride=1)
             axes.set_xlim(box[0], box[1])
             axes.set_ylim(box[2], box[3])
             axes.set_zlim(box[4], box[5])
         elif plot_type == 'contourf':
             X = self.node[..., 0]
             Y = self.node[..., 1]
-            data = axes.contourf(X, Y, uh, cmap=cmap, vmin=box[4], vmax=box[5],
-                    interpolation='bicubic')
+            data = axes.contourf(X, Y, uh, cmap=cmap, vmin=box[4], vmax=box[5])
             # data 的值在每一帧更新时都会发生改变 颜色条会根据这些更改自动更新
             # 后续的代码中无需对颜色条进行额外的更新操作
-            cbar = fig.colorbar(data, ax=axes)
+            # cbar = fig.colorbar(data, ax=axes)
 
-        # 根据当前帧序号计算数值解，更新图像对象的数值数组，显示当前帧序号和时刻
-        def func(n, *fargs):
-            # 声明 data 为非局部变量 这样在 func 函数内部对 data 进行的修改会影响到外部的 data 变量
-            nonlocal data
-            # 计算当前时刻的数值解并返回，uh 是数值解，t 是当前时刻
-            uh, t = advance(n, *fargs)
-            if plot_type == 'imshow':
-                # 更新 data 对象的数值数组。导致图像的颜色根据新的数值解 uh 更新
-                data.set_array(uh)
-                # 设置坐标轴的长宽比。'equal' 选项使得 x 轴和 y 轴的单位尺寸相等
-                axes.set_aspect('equal')
-            elif plot_type == 'surface':
+        def func(n, *fargs): # 根据当前帧序号计算数值解，更新图像对象的数值数组，显示当前帧序号和时刻
+            nonlocal data # 声明 data 为非局部变量 这样在 func 函数内部对 data 进行的修改会影响到外部的 data 变量
+            uh, t = advance(n, *fargs) # 计算当前时刻的数值解并返回，uh 是数值解，t 是当前时刻
+
+            if data is None:
+                if isinstance(axes, Axes) and plot_type == 'imshow':
+                    data = axes.imshow(uh, cmap=cmap, vmin=box[4], vmax=box[5],
+                               extent=box[0:4], interpolation='bicubic')
+                elif isinstance(axes, Axes3D) and plot_type == 'surface':
+                    data = axes.plot_surface(X, Y, uh, cmap=cmap, vmin=box[4],
+                                            vmax=box[5], rstride=1, cstride=1)
+                elif plot_type == 'contourf':
+                    data = axes.contourf(X, Y, uh, cmap=cmap, vmin=box[4], vmax=box[5])
+
+ 
+            if isinstance(axes, Axes) and plot_type == 'imshow':
+                data.set_array(uh) # 更新 data 对象的数值数组。导致图像的颜色根据新的数值解 uh 更新
+                axes.set_aspect('equal') # 设置坐标轴的长宽比。'equal' 选项使得 x 轴和 y 轴的单位尺寸相等
+
+            elif isinstance(axes, Axes3D) and plot_type == 'surface':
                 axes.clear()  # 清除当前帧的图像
-                data = axes.plot_surface(X, Y, uh, cmap=cmap, vmin=box[4],
-                        vmax=box[5])
+                data = axes.plot_surface(X, Y, uh, cmap=cmap, vmin=box[4], vmax=box[5])
                 axes.set_xlim(box[0], box[1])
                 axes.set_ylim(box[2], box[3])
                 axes.set_zlim(box[4], box[5])
@@ -231,25 +242,25 @@ class UniformMesh2d(Mesh, Plotable):
                 # 使用 contourf 时，每次更新图像时都会生成一个新的等高线填充层
                 # data.collections 保存了所有已经生成的等高线填充层
                 # 更新图像时 需要将旧的等高线填充层从图形中移除 以免遮挡住新的等高线填充层
-                for coll in data.collections:
-                    axes.collections.remove(coll)
-                data = axes.contourf(X, Y, uh, cmap=cmap, vmin=box[4],
-                        vmax=box[5])
+                if data is not None:
+                    if isinstance(data, QuadContourSet):
+                        for coll in data.collections:
+                            if coll in axes.collections:
+                                coll.remove()
+                data = axes.contourf(X, Y, uh, cmap=cmap, vmin=box[4], vmax=box[5])
                 axes.set_aspect('equal')
 
-            # 创建一个格式化的字符串，显示当前帧序号 n 和当前时刻 t
-            s = "frame=%05d, time=%0.8f"%(n, t)
+            s = "frame=%05d, time=%0.8f"%(n, t) # 创建一个格式化的字符串，显示当前帧序号 n 和当前时刻 t
             print(s)
-            # 将格式化的字符串设置为坐标轴的标题
-            axes.set_title(s)
+            axes.set_title(s) # 将格式化的字符串设置为坐标轴的标题
             return data
 
-        # 创建一个 funcanimation 对象，它将 fig 作为画布，func 作为帧更新函数，
-        # init_func 作为初始化函数，用于在动画开始之前设置图像的初始状态，
-        # fargs 作为一个元组，包含要传递给 func 函数的额外参数，frames 为帧数
-        # 并设置动画间隔时间
-        ani = animation.FuncAnimation(fig, func, init_func=init, fargs=fargs,
-                                      frames=frames, interval=interval)
+        # 创建一个 funcanimation 对象 
+        # fig 作为画布，func 作为帧更新函数
+        # init_func 作为初始化函数，用于在动画开始之前设置图像的初始状态
+        # fargs 作为一个元组，包含要传递给 func 函数的额外参数
+        # frames 为帧数，interval 为动画间隔时间
+        ani = animation.FuncAnimation(fig, func, init_func=init, fargs=fargs, frames=frames, interval=interval)
         ani.save('{}_{}'.format(plot_type, fname))
 
 
@@ -524,7 +535,11 @@ class UniformMesh2d(Mesh, Plotable):
         return F
 
     ## @ingroup FDMInterface
-    def error(self, u: Callable, uh: np.ndarray, errortype: str = 'all') -> Union[float, Tuple[np.float64, np.float64, np.float64]]:
+    def error(self, 
+        u: Callable, 
+        uh: np.ndarray, 
+        errortype: str = 'all') -> Union[float, Tuple[np.float64, np.float64, np.float64]]:
+
         """
         计算真实解和数值解之间的误差。
 
@@ -606,8 +621,13 @@ class UniformMesh2d(Mesh, Plotable):
         return A
 
     ## @ingroup FDMInterface
-    def apply_dirichlet_bc(self, gD: Callable[[np.ndarray], np.ndarray], A: spmatrix,
-                           f: np.ndarray, uh: Optional[np.ndarray] = None) -> Tuple[spmatrix, np.ndarray]:
+    def apply_dirichlet_bc(self, 
+        gD: Callable[[np.ndarray], np.ndarray], 
+        A: spmatrix,
+        f: np.ndarray, 
+        uh: Optional[np.ndarray] = None,
+        threshold: Optional[Union[int, Callable[[np.ndarray], np.ndarray]]] = None) -> Tuple[spmatrix, np.ndarray]:
+        
         """
         @brief: 组装 \\Delta u 对应的有限差分矩阵，考虑了 Dirichlet 边界和向量型函数
 
@@ -615,6 +635,7 @@ class UniformMesh2d(Mesh, Plotable):
         @param[in] A  (NN, NN), 稀疏矩阵
         @param[in] f  可能是一维数组（标量型右端项）或二维数组（向量型右端项）
         @param[in, optional] uh  默认为 None，表示网格函数，如果为 None 则创建一个新的网格函数
+        @param[in, optional] threshold 用于确定哪些网格节点应用 Dirichlet 边界条件
 
         @return Tuple[spmatrix, np.ndarray], 返回处理后的稀疏矩阵 A 和数组 f
         """
@@ -626,7 +647,16 @@ class UniformMesh2d(Mesh, Plotable):
         f = f.reshape(-1, ) # 展开为一维数组 TODO：向量型右端
 
         node = self.entity('node')
-        isBdNode = self.ds.boundary_node_flag()
+        # isBdNode = self.ds.boundary_node_flag()
+        if threshold is None:
+            isBdNode = self.ds.boundary_node_flag()
+        elif isinstance(threshold, int):
+            isBdNode = (np.arange(node.shape[0]) == threshold)
+        elif callable(threshold):
+            isBdNode = threshold(node)
+        else:
+            raise ValueError(f"Invalid threshold: {threshold}")
+        
         uh[isBdNode]  = gD(node[isBdNode])
         f -= A@uh
         f[isBdNode] = uh[isBdNode]
@@ -667,7 +697,7 @@ class UniformMesh2d(Mesh, Plotable):
         n1 = self.ny + 1
         k = np.arange(NN).reshape(n0, n1)
 
-        A = diags([1 - 2 * rx - 2 * ry], [0], shape=(NN, NN), format='csr')
+        A = diags([1 - 2 * rx - 2 * ry], 0, shape=(NN, NN), format='csr')
 
         val = np.broadcast_to(rx, (NN - n1,))
         I = k[1:, :].flat
@@ -700,7 +730,7 @@ class UniformMesh2d(Mesh, Plotable):
         n1 = self.ny + 1
         k = np.arange(NN).reshape(n0, n1)
 
-        A = diags([1 + 2 * rx + 2 * ry], [0], shape=(NN, NN), format='csr')
+        A = diags([1 + 2 * rx + 2 * ry], 0, shape=(NN, NN), format='csr')
 
         val = np.broadcast_to(-rx, (NN - n1,))
         I = k[1:, :].flat
@@ -762,6 +792,103 @@ class UniformMesh2d(Mesh, Plotable):
         return A, B
 
         A1 += csr_matrix((val, (J.flat, I.flat)), shape=(NN, NN), dtype=self.ftype)
+
+
+    ## @ingroup FDMInterface
+    def wave_operator_explicit(self, tau: float, a: float = 1.0):
+        """
+        @brief 生成波动方程的显格式离散矩阵
+
+        @param[in] tau float, 时间步长
+        @param[in] a float, 波速，默认值为 1
+
+        @return 离散矩阵 A
+        """
+        rx = a*tau/self.h[0]
+        ry = a*tau/self.h[1]
+
+        NN = self.number_of_nodes()
+        n0 = self.nx + 1
+        n1 = self.ny + 1
+        k = np.arange(NN).reshape(n0, n1)
+
+        A = diags([2*(1-rx**2-ry**2)], 0, shape=(NN, NN), format='csr')
+
+        val = np.broadcast_to(rx**2, (NN - n1,))
+        I = k[1:, :].flat
+        J = k[0:-1, :].flat
+        A += csr_matrix((val, (I, J)), shape=(NN, NN), dtype=self.ftype)
+        A += csr_matrix((val, (J, I)), shape=(NN, NN), dtype=self.ftype)
+
+        val = np.broadcast_to(ry**2, (NN - n0, ))
+        I = k[:, 1:].flat
+        J = k[:, 0:-1].flat
+        A += csr_matrix((val, (I, J)), shape=(NN, NN), dtype=self.ftype)
+        A += csr_matrix((val, (J, I)), shape=(NN, NN), dtype=self.ftype)
+
+        return A
+
+
+    ## @ingroup FDMInterface
+    def wave_operator_implicit(self, tau, a=1, theta=0.25):
+        """
+        @brief 生成波动方程的隐格式离散矩阵
+
+        @param[in] tau float, 时间步长
+        @param[in] a float, 波速，默认值为 1
+        @param[in] theta float, 时间离散格式参数，默认值为 0.25
+
+        @return 三个离散矩阵 A0, A1, A2，分别对应于不同的时间步
+        """
+        rx = a*tau/self.h[0]
+        ry = a*tau/self.h[1]
+
+        NN = self.number_of_nodes()
+        n0 = self.nx + 1
+        n1 = self.ny + 1
+        k = np.arange(NN).reshape(n0, n1)
+
+        A0 = diags([1+2*rx**2*theta+2*ry**2*theta], 0, shape=(NN, NN), format='csr')
+        A1 = diags([2*(1-(rx**2+ry**2)*(1-2*theta))], 0, shape=(NN, NN), format='csr')
+        A2 = diags([-(1+2*rx**2*theta+2*ry**2*theta)], 0, shape=(NN, NN), format='csr')
+
+        val = np.broadcast_to(-rx**2*theta, (NN-n1, ))
+        I = k[1:, :].flat
+        J = k[0:-1, :].flat
+        A0 += csr_matrix((val, (I, J)), shape=(NN, NN), dtype=self.ftype)
+        A0 += csr_matrix((val, (J, I)), shape=(NN, NN), dtype=self.ftype)
+
+        val = np.broadcast_to(-ry**2*theta, (NN-n0, ))
+        I = k[:, 1:].flat
+        J = k[:, 0:-1].flat
+        A0 += csr_matrix((val, (I, J)), shape=(NN, NN), dtype=self.ftype)
+        A0 += csr_matrix((val, (J, I)), shape=(NN, NN), dtype=self.ftype)
+
+        val = np.broadcast_to(rx**2*(1-2*theta), (NN-n1, ))
+        I = k[1:, :].flat
+        J = k[0:-1, :].flat
+        A1 += csr_matrix((val, (I, J)), shape=(NN, NN), dtype=self.ftype)
+        A1 += csr_matrix((val, (J, I)), shape=(NN, NN), dtype=self.ftype)
+
+        val = np.broadcast_to(ry**2*(1-2*theta), (NN-n0, ))
+        I = k[:, 1:].flat
+        J = k[:, 0:-1].flat
+        A1 += csr_matrix((val, (I, J)), shape=(NN, NN), dtype=self.ftype)
+        A1 += csr_matrix((val, (J, I)), shape=(NN, NN), dtype=self.ftype)
+
+        val = np.broadcast_to(rx**2*theta, (NN-n1, ))
+        I = k[1:, :].flat
+        J = k[0:-1, :].flat
+        A2 += csr_matrix((val, (I, J)), shape=(NN, NN), dtype=self.ftype)
+        A2 += csr_matrix((val, (J, I)), shape=(NN, NN), dtype=self.ftype)
+
+        val = np.broadcast_to(ry**2*theta, (NN-n0, ))
+        I = k[:, 1:].flat
+        J = k[:, 0:-1].flat
+        A2 += csr_matrix((val, (I, J)), shape=(NN, NN), dtype=self.ftype)
+        A2 += csr_matrix((val, (J, I)), shape=(NN, NN), dtype=self.ftype)
+
+        return A0, A1, A2
 
 
     ## @ingroup FDMInterface
@@ -1114,6 +1241,28 @@ class UniformMesh2d(Mesh, Plotable):
 
         return idxMap
 
+    def is_cut_cell(self, phi):
+        """
+        @brief 
+        """
+        phiSign = msign(phi)
+        cell = self.entity('cell')
+        isCutCell = np.abs(np.sum(phiSign[cell], axis=1)) < 4
+        return isCutCell
+
+    def compute_cut_point(self, phi):
+        """
+        """
+        edge = self.entity('edge') 
+        phiSign = msign(phi)
+        isCutEdge = phiSign[edge[:, 0]]*phiSign[edge[:, 1]] < 0
+        A = node[edge[isCutEdge, 0]]
+        B = node[edge[isCutEdge, 1]]
+
+        interface = UniformMesh2dFunction(self, phi) 
+        cutNode = find_cut_point(interface, A, B)
+        return cutNode
+        
 UniformMesh2d.set_ploter('2d')
 
 class UniformMesh2dFunction():
