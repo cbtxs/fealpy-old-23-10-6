@@ -5,10 +5,14 @@ import sympy as sp
 class SimplexElementBasis:
     def __init__(self, GD, btype='lagrange'):
         self.GD = int(GD)
-        t = 'l0'
+        lam = 'l0'
+        glam = 'gl0'
         for i in range(1, GD+1):
-            t = t+', l%d'%(i)   
-        self.l = sp.symbols(t, real=True)
+            lam = lam + ', l%d'%(i)   
+            glam = glam + ', gl%d'%(i)   
+        self.l = sp.symbols(lam, real=True)
+        self.gl = sp.symbols(glam, real=True)
+        print(self.gl)
 
         if btype in ['lagrange', 'l']:
             self.basis = self.lagrange_basis
@@ -91,6 +95,18 @@ class SimplexElementBasis:
         for i in range(ldof):
             phi[i] *= P[p]
         return phi
+
+    def grad_barnstein_basis(self, p, phi=None):
+        if phi is None:
+            phi = self.bernstein_basis(p)
+
+        gphi = []
+        for ph in phi:
+            gph = []
+            for i in range(self.GD+1):
+                gph.append(sp.diff(ph, self.l[i])*self.gl[i])
+            gphi.append(gph)
+        return gphi
 
     def hermite_basis(self):
         """

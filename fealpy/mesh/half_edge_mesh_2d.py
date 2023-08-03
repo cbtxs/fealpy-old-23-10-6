@@ -141,7 +141,7 @@ class HalfEdgeMesh2d(Mesh, Plotable):
         else:
             newMesh =  cls(mesh.node.copy(), mesh.ds.subdomain.copy(), mesh.ds.halfedge.copy())
             newMesh.celldata['level'][:] = mesh.celldata['level']
-            newMesh.nodedata['level'][:] = mesh.nodedata['level']
+            #newMesh.nodedata['level'][:] = mesh.nodedata['level']
             newMesh.halfedge['level'][:] = mesh.halfedgedata['level']
             return newMesh
 
@@ -204,7 +204,7 @@ class HalfEdgeMesh2d(Mesh, Plotable):
 
         self.halfedgedata['level'] = DynamicArray((2*NE, ), val=0,dtype=np.int_)
         self.celldata['level'] = DynamicArray((NC, ), val=0, dtype=np.int_) 
-        self.nodedata['level'] = DynamicArray((NN, ), val=0, dtype=np.int_)
+        #self.nodedata['level'] = DynamicArray((NN, ), val=0, dtype=np.int_)
 
         # 如果单元的角度大于 170 度， 设对应的半边层数为 1
         node = self.node
@@ -613,7 +613,6 @@ class HalfEdgeMesh2d(Mesh, Plotable):
     def mark_halfedge(self, isMarkedCell, method='poly'):
         cstart = self.ds.cellstart
         clevel = self.celldata['level'] # 注意这里是所有的单元的层信息
-        nlevel = self.nodedata['level']
         hlevel = self.halfedgedata['level']
         halfedge = self.entity('halfedge')
         if method == 'poly':
@@ -2293,6 +2292,7 @@ class HalfEdgeMesh2d(Mesh, Plotable):
             nodedata = self.nodedata
             for key, val in nodedata.items():
                 if val is not None:
+                    val = val[:]
                     if len(val.shape) == 2 and val.shape[1] == 2:
                         shape = (val.shape[0], 3)
                         val1 = np.zeros(shape, dtype=val.dtype)
