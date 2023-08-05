@@ -109,14 +109,14 @@ class Mesh3d(Mesh):
             mapper = cm.ScalarMappable(norm=norm, cmap='rainbow')
             nodecolor = mapper.to_rgba(nodecolor)
 
-        node = self.node
+        node = self.entity("node")
         if shownode:
             axes.scatter(
                     node[:, 0], node[:, 1], node[:, 2],
                     color=nodecolor, s=markersize)
 
         if showedge:
-            edge = self.ds.edge
+            edge = self.entity("edge")
             vts = node[edge]
             edges = a3.art3d.Line3DCollection(
                    vts,
@@ -126,6 +126,7 @@ class Mesh3d(Mesh):
 
         face = self.entity('face')
         isBdFace = self.ds.boundary_face_flag()
+        print(np.where(isBdFace))
         if threshold is None:
             face = face[isBdFace][:, self.ds.ccw]
         else:
@@ -135,7 +136,7 @@ class Mesh3d(Mesh):
             isInterfaceFace = np.sum(isKeepCell[face2cell[:, 0:2]], axis=-1) == 1
             isBdFace = (np.sum(isKeepCell[face2cell[:, 0:2]], axis=-1) == 2) & isBdFace
             face = face[isBdFace | isInterfaceFace][:, self.ds.ccw]
-        
+
         import mpl_toolkits.mplot3d as a3
         faces = a3.art3d.Poly3DCollection(
                 node[face],
@@ -203,10 +204,18 @@ class Mesh3dDataStructure():
                 return_inverse=True,
                 axis=0)
 
-        self.face = totalFace[i0]
-
         NF = i0.shape[0]
         self.NF = NF
+        ########## 以下代码用于测试 openfinite 中的代码，可以删除 ########
+        idx = np.argsort(i0)
+        idx_inverse = np.zeros_like(idx)
+        idx_inverse[idx] = np.arange(len(idx))
+        i0 = i0[idx]
+        j = idx_inverse[j]
+        ##################################################################
+
+        self.face = totalFace[i0]
+
 
         self.face2cell = np.zeros((NF, 4), dtype=self.itype)
 
@@ -220,11 +229,21 @@ class Mesh3dDataStructure():
         self.face2cell[:, 3] = i1 % NFC
 
         totalEdge = self.total_edge()
-        self.edge, i2, j = np.unique(
+        _, i2, j = np.unique(
                 np.sort(totalEdge, axis=1),
                 return_index=True,
                 return_inverse=True,
                 axis=0)
+
+        ########## 以下代码用于测试 openfinite 中的代码，可以删除 ########
+        idx = np.argsort(i2)
+        idx_inverse = np.zeros_like(idx)
+        idx_inverse[idx] = np.arange(len(idx))
+        i2 = i2[idx]
+        j = idx_inverse[j]
+        ##################################################################
+
+        self.edge = totalEdge[i2]
         NEC = self.NEC
         self.cell2edge = np.reshape(j, (NC, NEC))
         self.NE = self.edge.shape[0]
@@ -276,15 +295,15 @@ class Mesh3dDataStructure():
 
         TODO: check here
         """
-        if cell==None:
-            cell = self.cell
+        cell2edge = self.cell_to_edge()
+        edge = self.edge
+        cell = self.cell
         NC = self.NC
         NEC = self.NEC
         cell2edgeSign = np.zeros((NC, NEC), dtype=np.bool_)
         localEdge = self.localEdge
-        E = localEdge.shape[0]
-        for i, (j, k) in zip(range(E), localEdge):
-            cell2edgeSign[:, i] = cell[:, j] < cell[:, k]
+        for i in range(6):
+            cell2edgeSign[:, i] = (cell[:, localEdge[i, 0]] == edge[cell2edge[:, i], 0])
         return cell2edgeSign
 
     def cell_to_face_sign(self):

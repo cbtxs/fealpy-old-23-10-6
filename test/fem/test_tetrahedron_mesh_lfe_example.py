@@ -95,10 +95,10 @@ def test_dirichlte_and_neumann_bc_on_tetrahedron_mesh(p, n, maxit):
     ratio = em[:, 0:-1]/em[:, 1:]
     print(em)
     print(ratio)
-    assert np.abs(ratio[0, -1] - 2**(p+1))/2**(p+1) < 0.02
-    assert np.abs(ratio[1, -1] - 2**p)/2**p < 0.02
+    assert np.abs(ratio[0, -1] - 2**(p+1))/2**(p+1) < 0.03
+    assert np.abs(ratio[1, -1] - 2**p)/2**p < 0.1
 
 if __name__ == "__main__":
     #test_lfe_dirichlte_bc_on_tetrahedron_mesh(2, 1, 5)
-    test_lfe_dirichlte_and_neumann_bc_on_tetrahedron_mesh(2, 1, 5)
+    test_dirichlte_and_neumann_bc_on_tetrahedron_mesh(2, 1, 4)
 

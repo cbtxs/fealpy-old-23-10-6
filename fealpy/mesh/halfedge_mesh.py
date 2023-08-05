@@ -64,17 +64,12 @@ class HalfEdgeMesh2d(Mesh, Plotable):
                 subdomain, NN = node.shape[0], NV=NV)
         self.meshtype = 'halfedge2d'
 
-        self.halfedgedata = {}
         self.celldata = {}
         self.nodedata = {}
         self.edgedata = {}
-        self.facedata = self.edgedata
         self.meshdata = {}
-        self.hedgecolor = None
-
-        self.newnode2edge = {}
-        self.retainnode = {}
-        self.deletnode2edge = {}
+        self.halfedgedata = {}
+        self.facedata = self.edgedata
 
         # 网格节点的自由度标记数组
         # 0: 固定点
@@ -87,7 +82,7 @@ class HalfEdgeMesh2d(Mesh, Plotable):
             self.init_level_info()
 
     @classmethod
-    def from_mesh(cls, mesh, closed=False, NV=None):
+    def from_mesh(cls, mesh, NV=None):
         """
 
         Notes
@@ -97,113 +92,59 @@ class HalfEdgeMesh2d(Mesh, Plotable):
         界的外界区域
         """
         mtype = mesh.meshtype
+        NN = mesh.number_of_nodes()
+        NC = mesh.number_of_cells()
         if mtype not in {'halfedge', 'halfedge2d'}:
             NE = mesh.number_of_edges()
-            NC = mesh.number_of_cells()
+            NBE = mesh.number_of_boundary_edges()
+            NHE = NE*2 - NBE # 半边数, NHE - NBE 为内部边的个数的二倍
 
             node = mesh.entity('node')
             edge = mesh.entity('edge')
             edge2cell = mesh.ds.edge_to_cell()
+
             isInEdge = edge2cell[:, 0] != edge2cell[:, 1]
+            isBdEdge = ~isInEdge
 
-            halfedge = np.zeros((2*NE, 5), dtype=mesh.itype)
-            halfedge[:, 0] = edge.flat
+            halfedge = np.zeros((NHE, 5), dtype=mesh.itype)
+            halfedge[:NHE-NBE, 0] = edge[isInEdge].flat
+            halfedge[-NBE:, 0] = edge[isBdEdge, 1]
 
-            if closed:
-                halfedge[0::2, 1][isInEdge] = edge2cell[isInEdge, 1]
-                halfedge[1::2, 1] = edge2cell[:, 0]
-            else:
-                halfedge[0::2, 1][isInEdge] = edge2cell[isInEdge, 1] + 1
-                halfedge[1::2, 1] = edge2cell[:, 0] + 1
+            halfedge[0:NHE-NBE:2, 1] = edge2cell[isInEdge, 1]
+            halfedge[1:NHE-NBE:2, 1] = edge2cell[isInEdge, 0]
+            halfedge[-NBE:, 1] = edge2cell[isBdEdge, 0]
 
-            halfedge[0::2, 4] = range(1, 2*NE, 2)
-            halfedge[1::2, 4] = range(0, 2*NE, 2)
+            halfedge[0:NHE-NBE:2, 4] = np.arange(1, NHE-NBE, 2)
+            halfedge[1:NHE-NBE:2, 4] = np.arange(0, NHE-NBE, 2)
+            halfedge[-NBE:, 4] = np.arange(NHE-NBE, NHE) 
 
-            NHE = len(halfedge)
             edge = np.zeros((2*NHE, 2), dtype=halfedge.dtype)
             edge[:NHE] = halfedge[:, 0:2]
-            edge[NHE:, 0] = halfedge[halfedge[:, 4], 0]
+            edge[NHE:, 0] = halfedge[halfedge[:, 3], 0]
             edge[NHE:, 1] = halfedge[:, 1]
             idx = np.lexsort((edge[:, 0], edge[:, 1])).reshape(-1, 2)
             idx[:, 1] -= NHE
             halfedge[idx[:, 0], 2] = idx[:, 1]
-            halfedge[halfedge[:, 2], 3] = range(NHE)
+            halfedge[halfedge[:, 2], 3] = np.arange(NHE)
 
-            if closed:
-                subdomain = np.ones(NC, dtype=halfedge.dtype)
-            else:
-                subdomain = np.ones(NC+1, dtype=halfedge.dtype)
-                subdomain[0] = 0
-
-            mesh =  cls(node, halfedge, subdomain, NV=NV)
+            mesh =  cls(node, halfedge, NN=NN, NC=NC, NV=NV)
             return mesh
         else:
-            newMesh =  cls(mesh.node.copy(), mesh.ds.subdomain.copy(), mesh.ds.halfedge.copy())
+            newMesh =  cls(mesh.node.copy(), mesh.ds.halfedge.copy(), NN=NN, NC=NC, NV=mesh.ds.NV)
             newMesh.celldata['level'][:] = mesh.celldata['level']
-            #newMesh.nodedata['level'][:] = mesh.nodedata['level']
             newMesh.halfedge['level'][:] = mesh.halfedgedata['level']
             return newMesh
 
-    @classmethod
-    def from_edges(cls, node, edge, edge2subdomain, nodedof=None):
-        """
-        Parameters
-        ----------
-        node : (NN, GD)
-        edge : (NF, 2)
-        edge2subdomain : (NF, 2)
-                 0: 表示外部无界区域
-                -n: n >= 1, 表示编号为 -n 洞
-                 n: n >= 1, 表示编号为  n 的内部子区域
-        Examples
-        -------
-        >> 
-        """
-
-        NN = len(node)
-        NE = len(edge)
-
-        halfedge = np.zeros((2*NE, 5), dtype=edge.dtype)
-        halfedge[:, 0] = edge.flat
-
-        halfedge[0::2, 1] = edge2subdomain[:, 1]
-        halfedge[1::2, 1] = edge2subdomain[:, 0] 
-        cell2subdomain, _, j = np.unique(halfedge[:, 1], return_index=True, return_inverse=True)
-        halfedge[:, 1] = j
-
-        halfedge[0::2, 4] = range(1, 2*NE, 2)
-        halfedge[1::2, 4] = range(0, 2*NE, 2)
-
-        NHE = len(halfedge)
-        facets = np.zeros((2*NHE, 2), dtype=edge.dtype)
-        facets[:NHE] = halfedge[:, 0:2]
-        facets[NHE:, 0] = halfedge[halfedge[:, 4], 0]
-        facets[NHE:, 1] = halfedge[:, 1]
-        idx = np.lexsort((facets[:, 0], facets[:, 1])).reshape(-1, 2)
-        idx[:, 1] -= NHE
-        halfedge[idx[:, 0], 2] = idx[:, 1]
-        halfedge[halfedge[:, 2], 3] = range(NHE)
-
-        return cls(node, halfedge, cell2subdomain) 
-
-    @classmethod
-    def from_poly(self):
-        """
-
-        Reference
-        ---------
-        [.poly files] https://www.cs.cmu.edu/~quake/triangle.poly.html
-        """
-        pass
-
     def init_level_info(self):
+        """
+        @brief 初始化半边和单元的 level 
+        """
         NN = self.number_of_nodes()
-        NE = self.number_of_edges()
+        NHE = self.number_of_halfedges()
         NC = self.number_of_all_cells() # 实际单元个数
 
-        self.halfedgedata['level'] = DynamicArray((2*NE, ), val=0,dtype=np.int_)
+        self.halfedgedata['level'] = DynamicArray((NHE, ), val=0,dtype=np.int_)
         self.celldata['level'] = DynamicArray((NC, ), val=0, dtype=np.int_) 
-        #self.nodedata['level'] = DynamicArray((NN, ), val=0, dtype=np.int_)
 
         # 如果单元的角度大于 170 度， 设对应的半边层数为 1
         node = self.node
@@ -217,6 +158,9 @@ class HalfEdgeMesh2d(Mesh, Plotable):
                 ] = 1 
 
     def convexity(self):#
+        """
+        @brief 将网格中的非凸单元分解为凸单元
+        """
         def angle(x, y):
             x = x/(np.linalg.norm(x, axis=1)).reshape(len(x), 1)
             y = y/np.linalg.norm(y, axis=1).reshape(len(y), 1)
@@ -230,8 +174,6 @@ class HalfEdgeMesh2d(Mesh, Plotable):
 
         hedge = self.ds.hedge
         hcell = self.ds.hcell
-        cstart = self.ds.cellstart
-        subdomain = self.ds.subdomain
 
         hlevel = self.halfedgedata['level']
         clevel = self.celldata['level']
@@ -248,7 +190,6 @@ class HalfEdgeMesh2d(Mesh, Plotable):
             badHEdge, = np.where(angle0 > np.pi*17/18)#夹角大于170度的半边
             badCell, idx= np.unique(halfedge[badHEdge, 1], return_index=True)#每个单元每次只处理中的一个
             badHEdge = badHEdge[idx]#现在坏半边的单元都不同
-            badHEdge = badHEdge[halfedge[badHEdge, 1]>cstart-1]
             badNode = halfedge[badHEdge, 0]
             NE1 = len(badHEdge)
 
@@ -296,17 +237,6 @@ class HalfEdgeMesh2d(Mesh, Plotable):
                 flag = (nex==np.arange(NE*2+NE1, NE*2+NE1*2)) & isNotOK
                 isNotOK[flag] = False
 
-            #增加主半边
-            hedge.extend(np.arange(NE*2, NE*2+NE1))
-
-            #更新subdomain
-            subdomainNew = subdomain.increase_size(NE1)
-            subdomainNew[:] = subdomain[halfedge[badHEdge, 1]]
-
-            #更新起始边
-            hcell.increase_size(NE1)
-            hcell[halfedge[:, 1]] = range(len(halfedge)) # 的编号
-
             #单元层
             clevelNew = clevel.increase_size(NE1)
             clevelNew[:] = clevel[halfedge[badHEdge, 1]]
@@ -316,12 +246,21 @@ class HalfEdgeMesh2d(Mesh, Plotable):
             hlevelNew[:NE1] = hlevel[goodHEdge]
             hlevelNew[NE1:] = hlevel[badHEdge]
 
-            self.ds.NC = (subdomain[:]>0).sum()
-            self.ds.NE = halfedge.size//2
+            self.ds.reinit()
             if len(badHEdge)==0:
                 break
 
     def location(self, points):
+        """
+        @brief Find the location cell of given points in the grid.
+
+        @param points numpy.ndarray An array of points with shape (NP, 2), 
+            where NP is the number of points.
+
+        @return numpy.ndarray An array of integers representing the location 
+            cells for each point.
+        """
+
         halfedge = self.entity('halfedge')
         node = self.entity('node')
         hcell = self.ds.hcell
@@ -343,6 +282,20 @@ class HalfEdgeMesh2d(Mesh, Plotable):
         return cell
 
     def line_to_cell(self, point, segment):
+        """
+        @brief Find the cells intersected by the line segment defined by the given points.
+
+        @param point numpy.ndarray An array of points with shape (N, 2), 
+            where N is the number of points.
+        @param segment numpy.ndarray An array of segments with shape (M, 2), 
+            where M is the number of segments.
+
+        @return tuple A tuple containing two numpy arrays:
+           - isCrossCell numpy.ndarray A boolean array of size NC, 
+            indicating whether each cell is intersected by the line segment.
+           - intersectedCells numpy.ndarray An array containing the indices of 
+            cells that are intersected by the line segment.
+        """
         halfedge = self.entity('halfedge')
         node = self.entity('node')
         hcell = self.ds.hcell
@@ -407,13 +360,53 @@ class HalfEdgeMesh2d(Mesh, Plotable):
         else:
             raise ValueError("`etype` is wrong!")
 
-    def integrator(self, k, etype='cell'):
-        if etype in {'cell', 'tri',  2}:
-            return TriangleQuadrature(k)
-        elif etype in {'quad'}:
-            return QuadrangleQuadrature(k)
+    ### 以下是模仿 PolygonMesh 的接口
+    def integrator(self, q, etype='cell', qtype='legendre'):
+        """
+        @brief 获取不同维度网格实体上的积分公式
+        """
+        if etype in {'cell', 2}:
+            from ..quadrature import TriangleQuadrature
+            return TriangleQuadrature(q)
         elif etype in {'edge', 'face', 1}:
-            return GaussLegendreQuadrature(k)
+            if qtype in {'legendre'}:
+                from ..quadrature import GaussLegendreQuadrature
+                return GaussLegendreQuadrature(q)
+            elif qtype in {'lobatto'}:
+                from ..quadrature import GaussLobattoQuadrature
+                return GaussLobattoQuadrature(q)
+
+    def entity_barycenter(self, etype='cell', index=np.s_[:]):
+        node = self.entity('node')
+        GD = self.geo_dimension()
+        if etype in {'cell', 2}:
+            # 这里是单元顶点坐标的平均位置
+            cell2node = self.ds.cell_to_node(return_sparse=True)
+            if self.ds.NV is None:
+                NV = self.ds.number_of_vertices_of_cells()
+                bc = cell2node@node/NV[:, None]
+            else:
+                bc = cell2node@node/self.ds.NV
+        elif etype in {'edge', 'face', 1}:
+            edge = self.ds.edge_to_node()
+            bc = np.sum(node[edge, :], axis=1).reshape(-1, GD)/edge.shape[1]
+        elif etype in {'node', 0}:
+            bc = node
+        elif etype in {'halfedge'}:
+            halfedge = self.entity('halfedge')
+            bc = 0.5*(node[halfedge[index, 0]] + node[halfedge[halfedge[index,
+                4], 0]])
+        return bc
+
+    def entity_measure(self, etype=2, index=np.s_[:]):
+        if etype in {'cell', 2}:
+            return self.cell_area(index=index)
+        elif etype in {'edge', 'face', 1}:
+            return self.halfedge_length()[self.ds.hedge][index]
+        elif etype in {'node', 0}:
+            return 0
+        else:
+            raise ValueError(f"Invalid entity type '{etype}'.")
 
     def edge_bc_to_point(self, bcs, index=np.s_[:]):
         """
@@ -452,6 +445,96 @@ class HalfEdgeMesh2d(Mesh, Plotable):
             p = np.einsum('...j, ijk->...ik', bc, node[entity])
         return p
 
+    def number_of_global_ipoints(self, p: int) -> int:
+        """
+        @brief 插值点总数
+        """
+        gdof = self.number_of_nodes()
+        if p > 1:
+            NE = self.number_of_edges()
+            NC = self.number_of_cells()
+            gdof += NE*(p-1) + NC*(p-1)*p//2
+        return gdof
+
+    def number_of_local_ipoints(self,
+            p: int, iptype: Union[int, str]='all') -> Union[NDArray, int]:
+        """
+        @brief 获取局部插值点的个数
+        """
+        if iptype in {'all'}:
+            NV = self.ds.number_of_vertices_of_cells()
+            ldof = NV + (p-1)*NV + (p-1)*p//2
+            return ldof
+        elif iptype in {'cell', 2}:
+            return (p-1)*p//2
+        elif iptype in {'edge', 'face', 1}:
+            return (p+1)
+        elif iptype in {'node', 0}:
+            return 1
+
+    def cell_to_ipoint(self, p: int, index=np.s_[:]) -> NDArray:
+        """
+        @brief
+        """
+        cell = self.entity('cell')
+        if p == 1:
+            return cell[index]
+        else:
+            NC = self.number_of_cells()
+            ldof = self.number_of_local_ipoints(p, iptype='all')
+
+            location = np.zeros(NC+1, dtype=self.itype)
+            location[1:] = np.add.accumulate(ldof)
+
+            cell2ipoint = np.zeros(location[-1], dtype=self.itype)
+
+            edge2ipoint = self.edge_to_ipoint(p)
+            edge2cell = self.ds.edge_to_cell()
+
+            idx = location[edge2cell[:, [0]]] + edge2cell[:, [2]]*p + np.arange(p)
+            cell2ipoint[idx] = edge2ipoint[:, 0:p]
+
+            isInEdge = (edge2cell[:, 0] != edge2cell[:, 1])
+            idx = (location[edge2cell[isInEdge, 1]] + edge2cell[isInEdge, 3]*p).reshape(-1, 1) + np.arange(p)
+            cell2ipoint[idx] = edge2ipoint[isInEdge, p:0:-1]
+
+            NN = self.number_of_nodes()
+            NV = self.ds.number_of_vertices_of_cells()
+            NE = self.number_of_edges()
+            cdof = self.number_of_local_ipoints(p, iptype='cell')
+            idx = (location[:-1] + NV*p).reshape(-1, 1) + np.arange(cdof)
+            cell2ipoint[idx] = NN + NE*(p-1) + np.arange(NC*cdof).reshape(NC, cdof)
+            return np.hsplit(cell2ipoint, location[1:-1])[index]
+
+    def edge_to_ipoint(self, p: int, index=np.s_[:]) -> NDArray:
+        """
+        @brief 获取网格边与插值点的对应关系
+
+        """
+        if isinstance(index, slice) and index == slice(None):
+            NE = self.number_of_edges()
+            index = np.arange(NE)
+        elif isinstance(index, np.ndarray) and (index.dtype == np.bool_):
+            index, = np.nonzero(index)
+            NE = len(index)
+        elif isinstance(index, list) and (type(index[0]) is np.bool_):
+            index, = np.nonzero(index)
+            NE = len(index)
+        else:
+            NE = len(index)
+
+        NN = self.number_of_nodes()
+
+        edge = self.entity('edge', index=index)
+        edge2ipoints = np.zeros((NE, p+1), dtype=self.itype)
+        edge2ipoints[:, [0, -1]] = edge
+        if p > 1:
+            idx = NN + np.arange(p-1)
+            edge2ipoints[:, 1:-1] =  (p-1)*index[:, None] + idx
+        return edge2ipoints
+
+    face_to_ipoint = edge_to_ipoint
+
     def entity(self, etype=2, index=np.s_[:]):
         if etype in {'cell', 2}:
             return self.ds.cell_to_node()[index]
@@ -467,44 +550,6 @@ class HalfEdgeMesh2d(Mesh, Plotable):
     def geo_dimension(self):
         return self.node.shape[1]
     
-    def entity_measure(self, etype=2, index=np.s_[:]):
-        if etype in {'cell', 2}:
-            return self.cell_area(index=index)
-        elif etype in {'edge', 'face', 1}:
-            return self.halfedge_length()[self.ds.hedge][index]
-        elif etype in {'node', 0}:
-            return 0
-        else:
-            raise ValueError(f"Invalid entity type '{etype}'.")
-
-    def entity_measure(self, etype='cell', index=np.s_[:]):
-        if etype=='cell':
-            return self.cell_area(index)
-        elif etype in ['edge', 'face']:
-            return self.edge_length(index)
-
-    def entity_barycenter(self, etype='cell', index=np.s_[:]):
-        node = self.entity('node')
-        GD = self.geo_dimension()
-        if etype in {'cell', 2}:
-            # 这里是单元顶点坐标的平均位置
-            cell2node = self.ds.cell_to_node(return_sparse=True)
-            if self.ds.NV is None:
-                NV = self.ds.number_of_vertices_of_cells()
-                bc = cell2node@node/NV[:, None]
-            else:
-                bc = cell2node@node/self.ds.NV
-        elif etype in {'edge', 'face', 1}:
-            edge = self.ds.edge_to_node()
-            bc = np.sum(node[edge, :], axis=1).reshape(-1, GD)/edge.shape[1]
-        elif etype in {'node', 0}:
-            bc = node
-        elif etype in {'halfedge'}:
-            halfedge = self.entity('halfedge')
-            bc = 0.5*(node[halfedge[index, 0]] + node[halfedge[halfedge[index,
-                4], 0]])
-        return bc
-
     def node_normal(self):
         node = self.node
         cell = self.entity('cell')
@@ -536,18 +581,16 @@ class HalfEdgeMesh2d(Mesh, Plotable):
             node = self.entity('node')
 
             halfedge = self.ds.halfedge # DynamicArray
-            cstart = self.ds.cellstart
 
-            flag = halfedge[:, 1] >= cstart
-            e0 = halfedge[halfedge[flag, 3], 0]
-            e1 = halfedge[flag, 0]
+            e0 = halfedge[halfedge[:, 3], 0]
+            e1 = halfedge[:, 0]
 
             w = np.array([[0, -1], [1, 0]], dtype=np.int)
             v = (node[e1] - node[e0])@w
             val = np.sum(v*node[e0], axis=1)
 
             a = np.zeros(NC, dtype=self.ftype)
-            np.add.at(a, halfedge[flag, 1] - cstart, val)
+            np.add.at(a, halfedge[flag, 1], val)
             a /=2
             return a
         elif self.ds.NV == 3:
@@ -562,12 +605,6 @@ class HalfEdgeMesh2d(Mesh, Plotable):
             elif GD == 3:
                 a = np.sqrt(np.square(nv).sum(axis=1))/2.0
             return a
-
-    def all_cell_area(self):
-        cstart = self.ds.cellstart
-        area = self.cell_area()
-        area = np.r_[np.ones(cstart, dtype=np.float_), area]
-        return np.abs(area)
 
     def cell_barycenter(self, return_all=False):
         """
@@ -617,16 +654,12 @@ class HalfEdgeMesh2d(Mesh, Plotable):
             c /=3*a.reshape(-1, 1)
             return c
 
-
-
     def mark_halfedge(self, isMarkedCell, method='poly'):
-        cstart = self.ds.cellstart
         clevel = self.celldata['level'] # 注意这里是所有的单元的层信息
         hlevel = self.halfedgedata['level']
         halfedge = self.entity('halfedge')
         if method == 'poly':
             isMarkedHEdge = clevel[halfedge[:, 1]]>=clevel[halfedge[halfedge[:, 4], 1]]
-            isMarkedHEdge = isMarkedHEdge|(halfedge[halfedge[:, 4], 1]<cstart)
             isMarkedHEdge = isMarkedHEdge & isMarkedCell[halfedge[:, 1]]
         elif method == 'quad':
             color = self.hedgecolor['color']
@@ -661,8 +694,6 @@ class HalfEdgeMesh2d(Mesh, Plotable):
             isGreenHEdge = color == 1
             isOtherHEdge = (color == 2)|(color == 3)
             halfedge = self.ds.halfedge
-            cstart = self.ds.cellstart
-            isOutHEdge = halfedge[:, 1] <cstart
 
             # 当前半边的层标记小于等于所属单元的层标记
             flag0 = (hlevel - clevel[halfedge[:, 1]]) <= 0
@@ -675,9 +706,9 @@ class HalfEdgeMesh2d(Mesh, Plotable):
                 flag = ~isMarkedCell[halfedge[:, 1]] & isMarkedHEdge & (~isRedHEdge)
                 isMarkedCell[halfedge[flag, 1]] = True
 
-                flag0 = isMarkedCell[halfedge[:, 1]] & (~isGreenHEdge) & ~isOutHEdge & ~isMarkedHEdge
+                flag0 = isMarkedCell[halfedge[:, 1]] & (~isGreenHEdge) & ~isMarkedHEdge
                 flag1 = isMarkedHEdge[halfedge[:, 2]] & isMarkedHEdge[
-                        halfedge[:, 3]] & isRedHEdge & ~isOutHEdge & ~isMarkedHEdge
+                        halfedge[:, 3]] & isRedHEdge & ~isMarkedHEdge
                 flag2 = (isMarkedHEdge[halfedge[:, 2]] | isMarkedHEdge[
                         halfedge[:, 3]]) & isOtherHEdge & ~isMarkedHEdge
                 flag3 = isMarkedHEdge[halfedge[:, 4]] & ~isMarkedHEdge
@@ -709,59 +740,46 @@ class HalfEdgeMesh2d(Mesh, Plotable):
 
         NN = self.number_of_nodes()
         NE = self.number_of_edges()
+        NHE = self.number_of_halfedges()
 
         hlevel = self.halfedgedata['level']
         halfedge = self.ds.halfedge
         node = self.node
         hedge = self.ds.hedge
-        subdomain = self.ds.subdomain
         isMainHEdge = self.ds.main_halfedge_flag()
 
-        #新点到新半边的映射
-        self.newnode2edge, = np.where(isMarkedHEdge[hedge])
-
-        # 即是主半边, 也是标记加密的半边
-        flag0 = isMarkedHEdge & isMainHEdge
-        idx = halfedge[flag0, 4]
-        NE1 = flag0.sum()
+        # 添加点
+        flag = isMarkedHEdge & isMainHEdge # 即是主半边, 也是标记加密的半边
+        pre = halfedge[flag, 3]
+        NE1 = flag.sum()
         newNode = node.increase_size(NE1)
         if newnode is None:
-            newNode[:] = (node[halfedge[flag0, 0]] + node[halfedge[idx, 0]])/2
+            newNode[:] = (node[halfedge[flag, 0]] + node[halfedge[pre, 0]])/2
         elif isinstance(newnode, np.ndarray):
             newNode[:] = newnode
 
-        edge2NewNode = np.zeros(NE*2, dtype=np.int_)
-        edge2NewNode[flag0] = np.arange(NE1)+NN
-        edge2NewNode[idx] = np.arange(NE1)+NN
-
         #细分边
-        newHalfedge = halfedge.increase_size(2*NE1)
-
         current, = np.where(isMarkedHEdge)
-        pre = halfedge[current, 3]
         opp = halfedge[current, 4]
+        flag = current!=opp # 非边界半边
 
-        halfedge[current, 3] = np.arange(NE*2, NE*2+NE1*2)
-        halfedge[current, 4] = halfedge[opp, 3]
-        halfedge[pre, 2] = np.arange(NE*2, NE*2+NE1*2)
+        halfedge[current, 3] = np.arange(NHE, NHE+NE1*2)
+        halfedge[current[flag], 4] = halfedge[opp[flag], 3]
+        halfedge[pre, 2] = np.arange(NHE, NHE+NE1*2)
 
+        newHalfedge = halfedge.increase_size(2*NE1)
         newHalfedge[:, 0] = edge2NewNode[isMarkedHEdge]
-        newHalfedge[:, 1] = halfedge[:NE*2][isMarkedHEdge, 1]
+        newHalfedge[:, 1] = halfedge[:NHE][isMarkedHEdge, 1]
         newHalfedge[:, 2] = current
         newHalfedge[:, 3] = pre
-        newHalfedge[:, 4] = opp
-
-        #更新主半边
-        tmp, = np.where(flag0)
-        newHedge = hedge.increase_size(NE1)
-        newHedge[:] = halfedge[tmp, 3]
+        newHalfedge[:, 4] = np.arange(NHE, NHE+2*NE1)
+        newHalfedge[flag, 4] = opp[flag]
 
         #修改半边层
         hlevel[isMarkedHEdge] +=1
         hlevel.extend(np.zeros(2*NE1, dtype=np.int_))
 
-        self.ds.NE = NE + NE1
-        self.ds.NN = self.node.size
+        self.ds.reinit()
         return NE1
 
     def coarsen_halfedge(self, isMarkedHEdge):
@@ -2123,47 +2141,12 @@ class HalfEdgeMesh2d(Mesh, Plotable):
                          | /   \ |
                          |/     \|
                          0-------1
-                (0, 1, 2, 3) splite to [(4, 0, 1), (4, 1, 2), (4, 2, 3), (4, 3, 0)]
-        @return 分割后的三角形网格，以及每个三角形单元的第一条边对应原来多边形
-                网格中的半边编号
-        """
-        node = self.entity('node')
-        halfedge = self.entity('halfedge')
-        cstart = self.ds.cellstart
-        NN = self.number_of_nodes()
-        NC = self.number_of_cells()
-
-        newnode = np.zeros((NC+NN, node.shape[1]), dtype=np.float_)
-        newnode[:NN] = node[:]
-        newnode[NN:] = self.entity_barycenter('cell')
-
-        flag = halfedge[:, 1]>=cstart
-        NTC = np.sum(flag)
-        newcell = np.zeros((NTC, 3), dtype=np.int_)
-        newcell[:, 2] = halfedge[flag, 0]
-        newcell[:, 1] = halfedge[halfedge[flag, 4], 0]
-        newcell[:, 0] = halfedge[flag, 1]-cstart+NN
-        return TriangleMesh(newnode, newcell), np.where(flag)[0]
-
-    def split_to_trimesh_1(self):
-        """
-        @brief 在每个单元中心生成一个节点，将单元分成多个三角形单元.
-                         3-------2
-                         |\     /|
-                         | \   / |
-                         |  \ /  |
-                         |   4   |
-                         |  / \  |
-                         | /   \ |
-                         |/     \|
-                         0-------1
                 (0, 1, 2, 3) split to [(4, 0, 1), (4, 1, 2), (4, 2, 3), (4, 3, 0)]
         @return 分割后的三角形网格，以及每个三角形单元的第一条边对应原来多边形
                 网格中的半边编号
         """
         node     = self.entity('node')
         halfedge = self.entity('halfedge')
-        cstart   = self.ds.cellstart
         hcell    = self.ds.hcell
 
         NN = self.number_of_nodes()
@@ -2172,14 +2155,12 @@ class HalfEdgeMesh2d(Mesh, Plotable):
         newnode[:NN] = node[:]
         newnode[NN:] = self.entity_barycenter('cell')
 
-        NV = self.ds.number_of_vertices_of_cells()
-        NTC = np.sum(NV)
-
+        NHE = self.ds.number_of_halfedges()
         idx, _, num = self.ds.cell_to_halfedge(returnLocalnum=True)
-        newcell       = np.zeros((NTC, 3), dtype=np.int_)
+        newcell       = np.zeros((NHE, 3), dtype=np.int_)
         newcell[:, 2] = halfedge[idx, 0]
-        newcell[:, 1] = halfedge[halfedge[idx, 4], 0]
-        newcell[:, 0] = halfedge[idx, 1]-cstart+NN
+        newcell[:, 1] = halfedge[halfedge[idx, 3], 0]
+        newcell[:, 0] = halfedge[idx, 1]+NN
         return TriangleMesh(newnode, newcell), idx, num[idx]
 
     def to_dual_mesh(self, projection=None):
@@ -2419,8 +2400,6 @@ class HalfEdgeMesh2d(Mesh, Plotable):
         node = mesh.node
         cell = mesh.entity('cell')
         halfedge = mesh.entity('halfedge')
-        cstart = mesh.ds.cellstart
-
         isMainHEdge = mesh.ds.main_halfedge_flag()
 
         phiValue = interface(node[:])
@@ -2440,7 +2419,7 @@ class HalfEdgeMesh2d(Mesh, Plotable):
 
         mesh.refine_halfedge(isCutHEdge, newnode = cutNode)
 
-        newHE = np.where((halfedge[:, 0] >= NN)&(halfedge[:, 1]>=cstart))[0]
+        newHE = np.where((halfedge[:, 0] >= NN))[0]
         ## 注意这里要把 newHE 区分为界面内部和界面外部的
         cen = mesh.entity_barycenter('halfedge', index=newHE)
         isinnewHE = interface(cen)<0
@@ -2533,85 +2512,78 @@ class HalfEdgeMesh2d(Mesh, Plotable):
         print("cell2edge:", cell2edge)
 
 class HalfEdgeMesh2dDataStructure():
-    def __init__(self, halfedge, subdomain, NN=None, NV=None):
-        self.reinit(halfedge, subdomain, NN=NN, NV=NV)
+    def __init__(self, halfedge, NN=None, NC=None, NV=None):
+        self.itype = halfedge.dtype
+        self.halfedge = DynamicArray(halfedge, dtype=self.itype)
 
-    def reinit(self, halfedge, subdomain, NN=None, NV=None):
+        self.hcell = DynamicArray((0, ), dtype=self.itype) 
+        self.hnode = DynamicArray((0, ), dtype=self.itype)
+        self.hedge = DynamicArray((0, ), dtype=self.itype)
+
+        self.reinit(NN=NN, NC=NC, NV=NV)
+        self.NV = NV
+
+    def reinit(self, NN=None, NC=None, NV=None):
         """
 
         Note
         ----
-        self.halfedge, self.subdomain, self.hcell, self.hedge are DynamicArray
+        self.halfedge, 
+        self.hcell: 每个单元对应的一个半边
+        self.hedge: 每条边对应的一条半边有性质 hedge >= halfedge[hedge, 4]
         """
+        halfedge = self.halfedge
 
-        self.itype = halfedge.dtype
-
-        self.halfedge = DynamicArray(halfedge, dtype=self.itype)
-        self.subdomain = DynamicArray(subdomain, dtype=self.itype)
-
-        self.NN = NN
-        self.NE = len(halfedge)//2
+        self.NHE = len(halfedge) # 半边个数
+        self.NBE = np.sum(halfedge[:, 4]==np.arange(NHE)) # 边界边个数
+        self.NE = (self.NHE+self.NBE)//2
         self.NF = self.NE
 
-        # 区域内部的单元标记, 这里默认排前面的都是洞, 或者外部无界区域.
-        idx, = np.nonzero(subdomain == 0)
-        if len(idx) == 0:
-            self.cellstart = 0
-        elif len(idx) == 1:
-            self.cellstart = idx[0] + 1
+        self.NN = NN if NN is not None else np.max(halfedge[:, 0])+1
+        self.NC = NC if NC is not None else np.max(halfedge[:, 1])+1
+
+        # hcell[i] is the index of one face of i-th cell
+        if len(self.hcell)<self.NC:
+            self.hcell.increase_size(self.NC-len(self.hcell))
         else:
-            raise ValueError("The number of unbounded doamin is bigger than 1!")
+            self.hcell.decrease_size(len(self.hcell)-self.NC)
+        self.hcell[halfedge[:, 1]] = np.arange(NHE) # 的编号
 
-        self.NC = len(subdomain) - self.cellstart # 区域内单元的个数
+        if len(self.hnode)<self.NN:
+            self.hnode.increase_size(self.NN-len(self.hnode))
+        else:
+            self.hnode.decrease_size(len(self.hnode)-self.NN)
+        self.hnode[halfedge[:, 0]] = np.arange(NHE)
 
-        NC = len(subdomain) # 实际单元个数, 包括外部无界区域和洞
-
-        self.hcell = DynamicArray((NC, ), dtype=self.itype) # hcell[i] is the index of one face of i-th cell
-        self.hcell[halfedge[:, 1]] = np.arange(2*self.NE) # 的编号
-
-        self.hnode = DynamicArray((NN, ), dtype=self.itype)
-        self.hnode[halfedge[:, 0]] = np.arange(2*self.NE)
-
-        flag = halfedge[:, 4] - np.arange(2*self.NE) > 0
-        self.hedge = DynamicArray(np.arange(self.NE*2)[flag])
-        flag = subdomain[halfedge[self.hedge, 1]] < 1
-        self.hedge[flag] = halfedge[self.hedge[flag], 4]
-
-        self.NV = NV
+        if len(self.hedge)<self.NE:
+            self.hedge.increase_size(self.NE-len(self.hedge))
+        else:
+            self.hedge.decrease_size(len(self.hedge)-self.NE)
+        flag = np.arange(NHE)-halfedge[:, 4] >= 0
+        self.hedge[:] = np.arange(NHE)[flag]
 
     def number_of_edges(self):
-        return len(self.halfedge)//2
+        return self.NE 
 
     def number_of_cells(self):
-        return self.number_of_all_cells()-self.cellstart
+        return self.NC 
 
-    def number_of_all_cells(self):
-        return len(self.subdomain)
-    
-    def number_of_cells(self):
-        return self.number_of_all_cells() - self.cellstart 
+    def number_of_halfedges(self):
+        return self.NHE
 
-    def number_of_edges(self):
-        return len(self.halfedge)//2
-    
-    def number_of_vertices_of_all_cells(self):
-        NC = self.number_of_all_cells()
-        halfedge = self.halfedge
-        NV = np.zeros(NC, dtype=self.itype)
-        np.add.at(NV, halfedge[:, 1], 1)
-        return NV
+    def number_of_boundary_nodes(self):
+        return self.NBE
+
+    def number_of_boundary_edges(self):
+        return self.NBE
 
     def number_of_vertices_of_cells(self):
         if self.NV in {3, 4}:
             return self.NV
         else:
-            NC = self.NC
-            halfedge = self.halfedge
-            subdomain = self.subdomain
-            NV = np.zeros(NC, dtype=self.itype)
-            flag =  subdomain[halfedge[:, 1]] > 0
-            np.add.at(NV, halfedge[flag, 1]-self.cellstart, 1)
-            return NV
+            NV = np.zeros(self.NC, dtype=self.itype)
+            np.add.at(NV, self.halfedge[:, 1], 1)
+        return NV
 
     def number_of_nodes_of_cells(self):
         return self.number_of_vertices_of_cells()
@@ -2626,13 +2598,10 @@ class HalfEdgeMesh2dDataStructure():
         NN = self.NN
         NC = self.NC
         halfedge = self.halfedge
-        subdomain = self.subdomain
-        cstart = self.cellstart
         hflag = subdomain[halfedge[:, 1]] > 0
-
         if return_sparse:
             val = np.ones(hflag.sum(), dtype=np.bool_)
-            I = halfedge[hflag, 1] - cstart
+            I = halfedge[hflag, 1]
             J = halfedge[hflag, 0]
             cell2node = csr_matrix((val, (I, J)), shape=(NC, NN))
             return cell2node
@@ -2641,7 +2610,7 @@ class HalfEdgeMesh2dDataStructure():
             cellLocation = np.zeros(NC+1, dtype=self.itype)
             cellLocation[1:] = np.cumsum(NV)
             cell2node = np.zeros(cellLocation[-1], dtype=self.itype)
-            current = self.hcell[cstart:].copy()
+            current = self.hcell.copy()
             idx = cellLocation[:-1].copy()
             cell2node[idx] = halfedge[halfedge[current, 3], 0]
             NV0 = np.ones(NC, dtype=self.itype)
@@ -2655,7 +2624,7 @@ class HalfEdgeMesh2dDataStructure():
             return cell2node, cellLocation
         elif self.NV == 3: # tri mesh
             cell2node = np.zeros([NC, 3], dtype = np.int_)
-            current = halfedge[self.hcell[cstart:], 2]
+            current = halfedge[self.hcell[:], 2]
             cell2node[:, 0] = halfedge[current, 0]
             current = halfedge[current, 2]
             cell2node[:, 1] = halfedge[current, 0]
@@ -2664,7 +2633,7 @@ class HalfEdgeMesh2dDataStructure():
             return cell2node
         elif self.NV == 4: # quad mesh
             cell2node = np.zeros([NC, 4], dtype = np.int_)
-            current = halfedge[self.hcell[cstart:], 3]
+            current = halfedge[self.hcell[:], 3]
             cell2node[:, 0] = halfedge[current, 0]
             current = halfedge[current, 2]
             cell2node[:, 1] = halfedge[current, 0]
@@ -2677,23 +2646,20 @@ class HalfEdgeMesh2dDataStructure():
             raise ValueError('The property NV should be None, 3 or 4! But the NV is {}'.format(self.NV))
 
     def cell_to_edge(self, return_sparse=False):
+        NHE = self.NHE
         NE = self.NE
         NC = self.NC
 
         halfedge = self.halfedge
-        cstart = self.cellstart
-        subdomain = self.subdomain
-        hflag = subdomain[halfedge[:, 1]] > 0
         hedge = self.hedge
 
-        J = np.zeros(2*NE, dtype=self.itype)
+        J = np.zeros(NHE, dtype=self.itype) # halfedge_to_edge
         J[hedge] = range(NE)
         J[halfedge[hedge, 4]] = range(NE)
         if return_sparse:
-            val = np.ones(2*NE, dtype=np.bool_)
-            I = halfedge[hflag, 1] - cstart
-            cell2edge = csr_matrix((val[hflag], (I,
-                J[hflag])), shape=(NC, NE), dtype=np.bool_)
+            val = np.ones(NHE, dtype=np.bool_)
+            I = halfedge[:, 1]
+            cell2edge = csr_matrix((val, (I, J)), shape=(NC, NE), dtype=np.bool_)
             return cell2edge
         elif self.NV is None:
             NV = self.number_of_vertices_of_cells()
@@ -2701,7 +2667,7 @@ class HalfEdgeMesh2dDataStructure():
             cellLocation[1:] = np.cumsum(NV)
 
             cell2edge = np.zeros(cellLocation[-1], dtype=self.itype)
-            current = self.hcell[cstart:].copy()
+            current = self.hcell.copy()
             idx = cellLocation[:-1].copy()
             cell2edge[idx] = J[current]
             NV0 = np.ones(NC, dtype=self.itype)
@@ -2715,14 +2681,14 @@ class HalfEdgeMesh2dDataStructure():
             return cell2edge, cellLocation
         elif self.NV == 3: # tri mesh
             cell2edge = np.zeros([NC, 3], dtype = np.int_)
-            current = self.hcell[cstart:]
+            current = self.hcell
             cell2edge[:, 0] = J[current]
             cell2edge[:, 1] = J[halfedge[current, 2]]
             cell2edge[:, 2] = J[halfedge[current, 3]]
             return cell2edge
         elif self.NV == 4: # quad mesh
             cell2edge = np.zeros([NC, 4], dtype=np.int_)
-            current = self.hcell[cstart:]
+            current = self.hcell
             cell2edge[:, 3] = J[current]
             current = halfedge[current, 2]
             cell2edge[:, 0] = J[current] 
@@ -2734,62 +2700,37 @@ class HalfEdgeMesh2dDataStructure():
         else:
             raise ValueError('The property NV should be None, 3 or 4! But the NV is {}'.format(self.NV))
 
-    def cell_to_edge_sign(self, return_sparse=False):
-        NE = self.NE
-        NC = self.NC
-        NEC = self.number_of_edges_of_cells()
-
-        edge2cell = self.edge_to_cell()
-        if return_sparse == False:
-            if self.NV is None:
-                cellLocation = np.zeros(NC+1, dtype=self.itype)
-                cellLocation[1:] = np.cumsum(NEC)
-                cell2edgeSign = np.zeros(cellLocation[-1], dtype=np.bool_)
-                cell2edgeSign[cellLocation[edge2cell[:, 0]] + edge2cell[:, 2]]=True
-            else:
-                cell2edgeSign = np.zeros((NC, NEC), dtype=np.bool_)
-                cell2edgeSign[edge2cell[:, 0], edge2cell[:, 2]] = True
-        else:
-            val = np.ones(NE, dtype=np.bool_)
-            cell2edgeSign = csr_matrix(
-                    (val, (edge2cell[:, 0], range(NE))),
-                    shape=(NC, NE), dtype=np.bool_)
-        return cell2edgeSign
-
     def cell_to_face(self, return_sparse=True):
         return self.cell_to_edge(return_sparse=return_sparse)
 
     def cell_to_cell(self, return_sparse=True):
         NC = self.NC
-        halfedge = self.halfedge
-        cstart = self.cellstart
-        subdomain = self.subdomain
-        hflag = subdomain[halfedge[:, 1]] > 0
+        NHE = self.NHE
         hedge = self.hedge
+        halfedge = self.halfedge
 
         if return_sparse:
-            flag = hflag & hflag[halfedge[:, 4]]
-            val = np.ones(flag.sum(), dtype=np.bool_)
-            I = halfedge[flag, 1] - cstart
-            J = halfedge[halfedge[flag, 4], 1]-cstart
-            cell2cell = coo_matrix((val, (I, J)), shape=(NC, NC))
-            cell2cell+= coo_matrix((val, (J, I)), shape=(NC, NC))
+            val = np.ones(NHE, dtype=np.bool_)
+            I = halfedge[flag, 1]
+            J = halfedge[halfedge[:, 4], 1]
+            cell2cell = coo_matrix((val, (I, J)), shape=(NC, NC), dtype=np.bool_)
+            cell2cell+= coo_matrix((val, (J, I)), shape=(NC, NC), dtype=np.bool_)
             return cell2cell.tocsr()
         elif self.NV is None:
             NV = self.number_of_vertices_of_cells()
             cellLocation = np.zeros(NC+1, dtype=self.itype)
             cellLocation[1:] = np.cumsum(NV)
             cell2cell = np.zeros(cellLocation[-1], dtype=self.itype)
-            current = self.hcell[cstart:].copy()
+            current = self.hcell[:].copy()
             idx = cellLocation[:-1]
-            cell2cell[idx] = halfedge[halfedge[current, 4], 1]-cstart
+            cell2cell[idx] = halfedge[halfedge[current, 4], 1]
             NV0 = np.ones(NC, dtype=self.itype)
             isNotOK = NV0 < NV
             while isNotOK.sum() > 0:
                 current[isNotOK] = halfedge[current[isNotOK], 2]
                 idx[isNotOK] += 1
                 NV0[isNotOK] += 1
-                cell2cell[idx[isNotOK]] = halfedge[halfedge[current[isNotOK], 4], 1]-cstart
+                cell2cell[idx[isNotOK]] = halfedge[halfedge[current[isNotOK], 4], 1]
                 isNotOK = (NV0 < NV)
             idx = np.repeat(range(NC), NV)
             flag = (cell2cell < 0)
@@ -2797,24 +2738,24 @@ class HalfEdgeMesh2dDataStructure():
             return cell2cell, cellLocation
         elif self.NV == 3: # tri mesh
             cell2cell = np.zeros((NC, 3), dtype=self.itype)
-            current = self.hcell[cstart:]
-            cell2cell[:, 0] = halfedge[halfedge[current, 4], 1] - cstart
-            cell2cell[:, 1] = halfedge[halfedge[halfedge[current, 2], 4], 1] - cstart
-            cell2cell[:, 2] = halfedge[halfedge[halfedge[current, 3], 4], 1] - cstart
+            current = self.hcell[:]
+            cell2cell[:, 0] = halfedge[halfedge[current, 4], 1]
+            cell2cell[:, 1] = halfedge[halfedge[halfedge[current, 2], 4], 1]
+            cell2cell[:, 2] = halfedge[halfedge[halfedge[current, 3], 4], 1]
             idx = np.repeat(range(NC), 3).reshape(NC, 3)
             flag = (cell2cell < 0)
             cell2cell[flag] = idx[flag]
             return cell2cell
         elif self.NV == 4: # quad mesh
             cell2cell = np.zeros(NC, 4)
-            current = self.hcell[cstart:]
-            cell2cell[:, 3] = halfedge[halfedge[current, 4], 1] - cstart 
+            current = self.hcell[:]
+            cell2cell[:, 3] = halfedge[halfedge[current, 4], 1]
             current = halfedge[current, 2]
-            cell2cell[:, 0] = halfedge[halfedge[current, 4], 1] - cstart
+            cell2cell[:, 0] = halfedge[halfedge[current, 4], 1]
             current = halfedge[current, 2]
-            cell2cell[:, 1] = halfedge[halfedge[current, 4], 1] - cstart
+            cell2cell[:, 1] = halfedge[halfedge[current, 4], 1]
             current = halfedge[current, 2]
-            cell2cell[:, 2] = halfedge[halfedge[current, 4], 1] - cstart
+            cell2cell[:, 2] = halfedge[halfedge[current, 4], 1]
             idx = np.repeat(range(NC), 4).reshape(NC, 4)
             flag = (cell2cell < 0)
             cell2cell[flag] = idx[flag]
@@ -2829,7 +2770,7 @@ class HalfEdgeMesh2dDataStructure():
         hedge = self.hedge
         if return_sparse == False:
             edge = np.zeros((NE, 2), dtype=self.itype)
-            edge[:, 0] = halfedge[halfedge[hedge, 4], 0]
+            edge[:, 0] = halfedge[halfedge[hedge, 3], 0]
             edge[:, 1] = halfedge[hedge, 0]
             return edge
         else:
@@ -2837,7 +2778,7 @@ class HalfEdgeMesh2dDataStructure():
             edge2node = coo_matrix((val, (range(NE), halfedge[hedge, 0])),
                     shape=(NE, NN), dtype=np.bool_)
             edge2node+= coo_matrix(
-                    (val, (range(NE), halfedge[halfedge[hedge, 4], 0])),
+                    (val, (range(NE), halfedge[halfedge[hedge, 3], 0])),
                     shape=(NE, NN), dtype=np.bool_)
             return edge2node.tocsr()
 
@@ -2848,26 +2789,24 @@ class HalfEdgeMesh2dDataStructure():
     def edge_to_cell(self):
         NE = self.NE
         NC = self.NC
+        NHE = self.NHE
 
         halfedge = self.halfedge
-        cstart = self.cellstart
-        subdomain = self.subdomain
-        hflag = subdomain[halfedge[:, 1]] > 0
         hedge = self.hedge
 
-        J = np.zeros(2*NE, dtype=self.itype)
-        J[hedge] = range(NE)
-        J[halfedge[hedge, 4]] = range(NE)
+        J = np.zeros(NHE, dtype=self.itype)
+        J[hedge] = np.arange(NE)
+        J[halfedge[hedge, 4]] = np.arange(NE)
 
         edge2cell = np.full((NE, 4), -1, dtype=self.itype)
-        edge2cell[J[hedge], 0] = halfedge[hedge, 1] - cstart
-        edge2cell[J[halfedge[hedge, 4]], 1] = halfedge[halfedge[hedge, 4], 1] - cstart
+        edge2cell[J[hedge], 0] = halfedge[hedge, 1]
+        edge2cell[J[halfedge[hedge, 4]], 1] = halfedge[halfedge[hedge, 4], 1]
 
-        isMainHEdge = np.zeros(2*NE, dtype=np.bool_)
+        isMainHEdge = np.zeros(NHE, dtype=np.bool_)
         isMainHEdge[hedge] = True
 
         if self.NV is None:
-            current = self.hcell[cstart:].copy()
+            current = self.hcell[:].copy()
             end = current.copy()
             lidx = np.zeros_like(current)
             isNotOK = np.ones_like(current, dtype=np.bool_)
@@ -2880,7 +2819,7 @@ class HalfEdgeMesh2dDataStructure():
                 lidx[isNotOK] += 1
                 isNotOK = (current != end)
         elif self.NV == 3:
-            current = self.hcell[cstart:]
+            current = self.hcell[:]
             idx = J[current]
             flag = isMainHEdge[current] 
             edge2cell[idx[flag], 2] = 0
@@ -2896,7 +2835,7 @@ class HalfEdgeMesh2dDataStructure():
             edge2cell[idx[flag], 2] = 2
             edge2cell[idx[~flag], 3] = 2
         elif self.NV == 4:
-            current = self.hcell[cstart]
+            current = self.hcell[:]
             idx = J[current]
             flag = isMainHEdge[current] 
             edge2cell[idx[flag], 2] = 0
@@ -2927,13 +2866,37 @@ class HalfEdgeMesh2dDataStructure():
         edge2cell[flag, 3] = edge2cell[flag, 2]
         return edge2cell
 
+    def cell_to_edge_sign(self, return_sparse=False):
+        NE = self.NE
+        NC = self.NC
+        NEC = self.number_of_edges_of_cells()
+
+        edge2cell = self.edge_to_cell()
+        if return_sparse == False:
+            if self.NV is None:
+                cellLocation = np.zeros(NC+1, dtype=self.itype)
+                cellLocation[1:] = np.cumsum(NEC)
+                cell2edgeSign = np.zeros(cellLocation[-1], dtype=np.bool_)
+                cell2edgeSign[cellLocation[edge2cell[:, 0]] + edge2cell[:, 2]]=True
+            else:
+                cell2edgeSign = np.zeros((NC, NEC), dtype=np.bool_)
+                cell2edgeSign[edge2cell[:, 0], edge2cell[:, 2]] = True
+        else:
+            val = np.ones(NE, dtype=np.bool_)
+            cell2edgeSign = csr_matrix(
+                    (val, (edge2cell[:, 0], range(NE))),
+                    shape=(NC, NE), dtype=np.bool_)
+        return cell2edgeSign
+
+
     def node_to_node(self, return_sparse=True):
         NN = self.NN
         NE = self.NE
+        NHE = self.NHE
         halfedge = self.halfedge
         I = halfedge[:, 0] 
-        J = halfedge[halfedge[:, 4], 0] 
-        val = np.ones(2*NE, dtype=np.bool_)
+        J = halfedge[halfedge[:, 3], 0] 
+        val = np.ones(NHE, dtype=np.bool_)
         node2node = csr_matrix((val, (I, J)), shape=(NN, NN), dtype=np.bool_)
         return node2node
 
@@ -2943,15 +2906,13 @@ class HalfEdgeMesh2dDataStructure():
     def node_to_cell(self, return_sparse=True):
         NN = self.NN
         NC = self.NC
+        NHE = self.NHE
         halfedge =  self.halfedge
-        subdomain = self.subdomain
-        cstart = self.cellstart
-        hflag = subdomain[halfedge[:, 1]] > 0
 
         if return_sparse:
-            val = np.ones(hflag.sum(), dtype=np.bool_)
-            I = halfedge[hflag, 0]
-            J = halfedge[hflag, 1] - cstart
+            val = np.ones(NHE, dtype=np.bool_)
+            I = halfedge[:, 0]
+            J = halfedge[:, 1]
             node2cell = csr_matrix((val, (I.flat, J.flat)), shape=(NN, NC), dtype=np.bool_)
             return node2cell
 
@@ -2959,7 +2920,6 @@ class HalfEdgeMesh2dDataStructure():
         """!
         @brief 半边在所属单元中的编号
         """
-        cstart = self.cellstart
         halfedge = self.halfedge
 
         Location = self.number_of_vertices_of_cells()
@@ -2967,16 +2927,16 @@ class HalfEdgeMesh2dDataStructure():
         c2he = np.zeros(Location[-1], dtype=np.int_)
 
         NC = self.NC 
-        N = len(self.halfedge)
-        halfedge2cellnum = np.zeros(N, dtype=np.int_) # 每条半边所在单元的编号
-        hcell = self.hcell[cstart:].copy()
+        NHE = self.NHE 
+        halfedge2cellnum = np.zeros(NHE, dtype=np.int_) # 每条半边所在单元的编号
+        hcell = self.hcell[:]
         isNotOK = np.ones(NC, dtype=np.bool_)
         i = 0
         while np.any(isNotOK):
             c2he[Location[:-1][isNotOK]+i] = hcell[isNotOK]
             halfedge2cellnum[hcell[isNotOK]] = i
             hcell[isNotOK] = halfedge[hcell[isNotOK], 2]
-            isNotOK[isNotOK] = self.hcell[cstart:][isNotOK]!=hcell[isNotOK]
+            isNotOK[isNotOK] = self.hcell[:][isNotOK]!=hcell[isNotOK]
             i += 1
         if returnLocalnum:
             return c2he, Location, halfedge2cellnum
@@ -3032,50 +2992,30 @@ class HalfEdgeMesh2dDataStructure():
     def boundary_node_flag(self):
         NN = self.NN
         halfedge =  self.halfedge # DynamicArray
-        subdomain = self.subdomain # DynamicArray
-        hflag = subdomain[halfedge[:, 1]] > 0
-        isBdHEdge = hflag & (~hflag[halfedge[:, 4]])
-        isBdNode = np.zeros(NN, dtype=np.bool_)
+        isBdHEdge = halfedge[:, 4]==np.arange(NHE)
+        isBDNode = np.zeros(NN, dtype=np.bool_)
         isBdNode[halfedge[isBdHEdge, 0]] = True 
         return isBdNode
 
     def boundary_edge_flag(self):
         halfedge =  self.halfedge
         hedge = self.hedge
-        subdomain = self.subdomain
-
-        hflag = subdomain[halfedge[:, 1]] > 0
-        isBdEdge = hflag[hedge] & (~hflag[halfedge[hedge, 4]])
+        isBdEdge = hedge == halfedge[hedge, 4] 
         return isBdEdge 
 
     def boundary_cell_flag(self):
-        """
-
-        Parameters
-        ----------
-
-        Notes
-        -----
-
-        Reference
-        ---------
-        """
-        NC = self.NC
-        cstart = self.cellstart
-        halfedge =  self.halfedge # DynamicArray
-        subdomain = self.subdomain # DynamicArray
-        hflag = subdomain[halfedge[:, 1]] > 0
-        isBdHEdge = hflag & (~hflag[halfedge[:, 4]])
-
-        isBdCell = np.zeros(NC, dtype=np.bool_)
-        idx = halfedge[isBdHEdge, 1] - cstart
-        isBdCell[idx] = True
+        NN = self.NN
+        halfedge =  self.halfedge
+        isBdHEdge = halfedge[:, 4]==np.arange(NHE)
+        isBDCell = np.zeros(NN, dtype=np.bool_)
+        isBdCell[halfedge[isBdHEdge, 1]] = True 
         return isBdCell
 
     def boundary_node_index(self):
-        isBdNode = self.boundary_node_flag()
-        idx, = np.nonzero(isBdNode)
-        return idx
+        NN = self.NN
+        halfedge =  self.halfedge # DynamicArray
+        isBdHEdge = halfedge[:, 4]==np.arange(NHE)
+        return halfedge[isBdHEdge, 0]
 
     def boundary_edge_index(self):
         isBdEdge = self.boundary_edge_flag()
@@ -3083,15 +3023,13 @@ class HalfEdgeMesh2dDataStructure():
         return idx
 
     def boundary_cell_index(self):
-        isBdCell = self.boundary_cell_flag()
-        idx, = np.nonzero(isBdCell)
-        return idx
+        NN = self.NN
+        halfedge =  self.halfedge # DynamicArray
+        isBdHEdge = halfedge[:, 4]==np.arange(NHE)
+        return halfedge[isBdHEdge, 1]
 
     def main_halfedge_flag(self):
-        isMainHEdge = np.zeros(2*self.NE, dtype=np.bool_)
+        isMainHEdge = np.zeros(self.NHE, dtype=np.bool_)
         isMainHEdge[self.hedge[:]] = True
         return isMainHEdge
 
-    def boundary_edge(self):
-        edge = self.edge_to_node()
-        return edge[self.boundary_edge_index()]
