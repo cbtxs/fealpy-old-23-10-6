@@ -47,6 +47,8 @@ class HalfEdgeMesh2d(Mesh, Plotable):
         这个类的核心数组都是动态数组， 可以根据网格实体数目的变化动态增加长度，
         理论上可有效减少内存开辟的次数。
 
+        边界半边的对边是自身
+
         Reference
         ---------
         [1] https://github.com/maciejkula/dynarray/blob/master/dynarray/dynamic_array.py
@@ -104,19 +106,19 @@ class HalfEdgeMesh2d(Mesh, Plotable):
             idx = np.zeros((NHE, 2), dtype=np.int_)
             halfedge = np.zeros((NHE, 5), dtype=mesh.itype)
             halfedge[:NHE-NBE, 0] = edge[isInEdge].flat
-            halfedge[-NBE:, 0] = edge[isBdEdge, 1]
+            halfedge[NHE-NBE:, 0] = edge[isBdEdge, 1]
 
             halfedge[0:NHE-NBE:2, 1] = edge2cell[isInEdge, 1]
             halfedge[1:NHE-NBE:2, 1] = edge2cell[isInEdge, 0]
-            halfedge[-NBE:, 1] = edge2cell[isBdEdge, 0]
+            halfedge[NHE-NBE:, 1] = edge2cell[isBdEdge, 0]
 
             halfedge[0:NHE-NBE:2, 4] = np.arange(1, NHE-NBE, 2)
             halfedge[1:NHE-NBE:2, 4] = np.arange(0, NHE-NBE, 2)
-            halfedge[-NBE:, 4] = np.arange(NHE-NBE, NHE) 
+            halfedge[NHE-NBE:, 4] = np.arange(NHE-NBE, NHE) 
 
             idx[0:NHE-NBE:2, 1] = edge2cell[isInEdge, 3]
             idx[1:NHE-NBE:2, 1] = edge2cell[isInEdge, 2]
-            idx[-NBE:, 1] = edge2cell[isBdEdge, 2]
+            idx[NHE-NBE:, 1] = edge2cell[isBdEdge, 2]
             idx[:, 0] = halfedge[:, 1]
 
             idx = np.lexsort([idx[:, 1], idx[:, 0]])
@@ -529,10 +531,7 @@ class HalfEdgeMesh2d(Mesh, Plotable):
 
     def cell_area(self, index=np.s_[:]):
         """
-
-        Notes
-        -----
-        计算单元的面积
+        @brief 计算单元的面积
         """
         if self.ds.NV in {None, 4}:
             NC = self.number_of_cells()
@@ -564,29 +563,34 @@ class HalfEdgeMesh2d(Mesh, Plotable):
                 a = np.sqrt(np.square(nv).sum(axis=1))/2.0
             return a
 
-    def cell_barycenter(self, index=np.s_[:]):
+    def cell_barycenter(self, index=np.s_[:]): #TODO 三维
         """
         @brief 单元的重心。
 
         """
         GD = self.geo_dimension()
         NC = self.number_of_cells()
+
         node = self.entity('node') # DynamicArray
         halfedge = self.entity('halfedge') # DynamicArray
 
-        e0 = halfedge[halfedge[:, 3], 0]
-        e1 = halfedge[:, 0]
-        w = np.array([[0, -1], [1, 0]], dtype=np.int)
-        v= (node[e1] - node[e0])@w
-        val = np.sum(v*node[e0], axis=1)
-        ec = val.reshape(-1, 1)*(node[e1]+node[e0])/2
+        cellflag = np.zeros(NC, dtype=np.bool_)
+        cellflag[index] = True
+        hflag = cellflag[halfedge[:, 1]]
+
+        e0 = halfedge[halfedge[hflag, 3], 0]
+        e1 = halfedge[hflag, 0]
+        w  = np.array([[0, -1], [1, 0]], dtype=np.int)
+        v  = (node[e1] - node[e0])@w
+        va = np.sum(v*node[e0], axis=1)
+        ec = va.reshape(-1, 1)*(node[e1]+node[e0])/2
 
         a = np.zeros(NC, dtype=self.ftype)
         c = np.zeros((NC, GD), dtype=self.ftype)
-        np.add.at(a, halfedge[:, 1], val)
-        np.add.at(c, halfedge[:, 1], ec)
-        a /=2
-        c /=3*a.reshape(-1, 1)
+        np.add.at(a, halfedge[hflag, 1], va)
+        np.add.at(c, halfedge[hflag, 1], ec)
+        a[index] /=2
+        c[index] /=3*a[index, None]
         return c[index]
 
     def delete_entity(self, isMarked, etype='node'):
@@ -933,7 +937,6 @@ class HalfEdgeMesh2d(Mesh, Plotable):
         return isMarkedHEdge, isRNode, newNode
 
     def refine_poly(self, isMarkedCell=None, options={'disp': True}):
-        import time
         clevel   = self.celldata['level']
         hlevel   = self.halfedgedata['level']
         halfedge = self.entity('halfedge')
@@ -974,15 +977,15 @@ class HalfEdgeMesh2d(Mesh, Plotable):
 
         # 保证相邻单元层数小于等于1
         while True:
+            opp = halfedge[:, 4]
             isRNode = np.ones(NN, dtype=np.bool_)
-            flag = (hlevel == hlevel[halfedge[:, 4]])&(clevel[halfedge[:, 1]]>0)&(halfedge[:, 4]!=np.arange(NHE))
+            flag = (hlevel == hlevel[opp])&(clevel[halfedge[:, 1]]>0)&(opp!=np.arange(NHE))
             flag = flag & isMarkedCell[halfedge[:, 1]]
             np.logical_and.at(isRNode, halfedge[:, 0], flag)
             flag = isRNode[halfedge[:, 0]]
             isMarkedCell[:] = False
             isMarkedCell[halfedge[flag, 1]] = True
 
-            opp = halfedge[:, 4]
             isMarked = (isMarkedCell[halfedge[:, 1]]) & (~isMarkedCell[halfedge[opp, 1]])
             isMarked = isMarked & (clevel[halfedge[opp, 1]]>clevel[halfedge[:, 1]])
             isMarkedCell[halfedge[isMarked, 1]] = False
@@ -3086,7 +3089,7 @@ class HalfEdgeMesh2dDataStructure():
     def boundary_edge_flag(self):
         halfedge =  self.halfedge
         hedge = self.hedge
-        isBdEdge = hedge == halfedge[hedge, 4] 
+        isBdEdge = hedge[:] == halfedge[hedge, 4] 
         return isBdEdge 
 
     def boundary_cell_flag(self):
