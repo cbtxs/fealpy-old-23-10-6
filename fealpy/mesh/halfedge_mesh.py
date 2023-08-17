@@ -104,19 +104,19 @@ class HalfEdgeMesh2d(Mesh, Plotable):
             idx = np.zeros((NHE, 2), dtype=np.int_)
             halfedge = np.zeros((NHE, 5), dtype=mesh.itype)
             halfedge[:NHE-NBE, 0] = edge[isInEdge].flat
-            halfedge[-NBE:, 0] = edge[isBdEdge, 1]
+            halfedge[NHE-NBE:, 0] = edge[isBdEdge, 1]
 
             halfedge[0:NHE-NBE:2, 1] = edge2cell[isInEdge, 1]
             halfedge[1:NHE-NBE:2, 1] = edge2cell[isInEdge, 0]
-            halfedge[-NBE:, 1] = edge2cell[isBdEdge, 0]
+            halfedge[NHE-NBE:, 1] = edge2cell[isBdEdge, 0]
 
             halfedge[0:NHE-NBE:2, 4] = np.arange(1, NHE-NBE, 2)
             halfedge[1:NHE-NBE:2, 4] = np.arange(0, NHE-NBE, 2)
-            halfedge[-NBE:, 4] = np.arange(NHE-NBE, NHE) 
+            halfedge[NHE-NBE:, 4] = np.arange(NHE-NBE, NHE) 
 
             idx[0:NHE-NBE:2, 1] = edge2cell[isInEdge, 3]
             idx[1:NHE-NBE:2, 1] = edge2cell[isInEdge, 2]
-            idx[-NBE:, 1] = edge2cell[isBdEdge, 2]
+            idx[NHE-NBE:, 1] = edge2cell[isBdEdge, 2]
             idx[:, 0] = halfedge[:, 1]
 
             idx = np.lexsort([idx[:, 1], idx[:, 0]])
@@ -564,6 +564,9 @@ class HalfEdgeMesh2d(Mesh, Plotable):
                 a = np.sqrt(np.square(nv).sum(axis=1))/2.0
             return a
 
+    def cell_norm(self, index): #TODO
+        hcell = self.ds.hcell[index]
+
     def cell_barycenter(self, index=np.s_[:]):
         """
         @brief 单元的重心。
@@ -576,8 +579,11 @@ class HalfEdgeMesh2d(Mesh, Plotable):
 
         e0 = halfedge[halfedge[:, 3], 0]
         e1 = halfedge[:, 0]
-        w = np.array([[0, -1], [1, 0]], dtype=np.int)
-        v= (node[e1] - node[e0])@w
+        if GD==2:
+            w = np.array([[0, -1], [1, 0]], dtype=np.int)
+            v= (node[e1] - node[e0])@w
+        else: #TODO
+            pass
         val = np.sum(v*node[e0], axis=1)
         ec = val.reshape(-1, 1)*(node[e1]+node[e0])/2
 
@@ -933,11 +939,11 @@ class HalfEdgeMesh2d(Mesh, Plotable):
         return isMarkedHEdge, isRNode, newNode
 
     def refine_poly(self, isMarkedCell=None, options={'disp': True}):
-        import time
         clevel   = self.celldata['level']
         hlevel   = self.halfedgedata['level']
         halfedge = self.entity('halfedge')
         isMainHEdge = self.ds.main_halfedge_flag()
+        NC = self.number_of_cells()
 
         isMarkedCell = np.ones(NC, dtype=np.bool_) if isMarkedCell is None else isMarkedCell
         isMarkedHEdge = self.mark_halfedge(isMarkedCell, method='poly')
@@ -2345,7 +2351,7 @@ class HalfEdgeMesh2d(Mesh, Plotable):
         NC = self.number_of_cells()
 
         node = self.entity('node')
-        cell, cellLoc = self.ds.cell_to_node()
+        cells = self.ds.cell_to_node()
 
         if node.shape[1] == 2:
             node = np.c_[node, np.zeros((len(node), 1), dtype=np.float_)]
@@ -2355,7 +2361,6 @@ class HalfEdgeMesh2d(Mesh, Plotable):
         uGrid = vtk.vtkUnstructuredGrid()
         uGrid.SetPoints(points)
 
-        cells = np.split(cell, cellLoc[1:-1])
         vtk_cells = vtk.vtkCellArray()
         for c in cells:
             vtk_cell = vtk.vtkPolygon()
