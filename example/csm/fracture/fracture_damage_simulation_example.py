@@ -16,12 +16,14 @@ from fealpy.fem import ScalarSourceIntegrator
 from fealpy.fem import ProvidesSymmetricTangentOperatorIntegrator
 
 from fealpy.fem import DirichletBC
+from fealpy.fem import recovery_alg
+from fealpy.mesh.adaptive_tools import mark
 
 
 class Brittle_Facture_model():
     def __init__(self):
-        self.E = 210 # 杨氏模量
-        self.nu = 0.3 # 泊松比
+        self.E = 200 # 杨氏模量
+        self.nu = 0.2 # 泊松比
         self.Gc = 1 # 材料的临界能量释放率
         self.l0 = 0.02 # 尺度参数，断裂裂纹的宽度
 
@@ -66,7 +68,7 @@ class Brittle_Facture_model():
         -----
         这里向量的第 i 个值表示第 i 个时间步的位移的大小
         """
-        return np.concatenate((np.linspace(0, 70e-3, 6)[1:], np.linspace(70e-3,
+        return np.concatenate((np.linspace(0, 70e-3, 6), np.linspace(70e-3,
             125e-3, 26)[1:]))
 
     def top_disp_direction(self):
@@ -261,82 +263,69 @@ class fracture_damage_integrator():
             D[:, m, n] += d2 * val
         D = (D + D.swapaxes(1,2))/2
         return D
+    
+    def get_dissipated_energy(self, d):
 
-    def disp_matrix(self, D):
-        NN = mesh.number_of_nodes()
-        cellmeasure = mesh.entity_measure('cell')
-       
-        qf = mesh.integrator(4, 'cell')
-        bcs, ws = qf.get_quadrature_points_and_weights()
-        grad = space.grad_basis(bcs)
-        
-        C00 = np.einsum('i, ijm, ijn, j->jmn', ws, grad[..., 0], grad[..., 0], cellmeasure)
-        C01 = np.einsum('i, ijm, ijn, j->jmn', ws, grad[..., 0], grad[..., 1], cellmeasure)
-        C11 = np.einsum('i, ijm, ijn, j->jmn', ws, grad[..., 1], grad[..., 1], cellmeasure)
-        C10 = np.einsum('i, ijm, ijn, j->jmn', ws, grad[..., 1], grad[..., 0], cellmeasure)
+        bc = np.array([1 / 3, 1 / 3, 1 / 3], dtype=np.float64)
+        mesh = self.mesh
+        cm = mesh.entity_measure('cell')
+        g = d.grad_value(bc)
 
-        D00 = D[:, 0, 0][:, None, None] * C00
-        D00 += D[:, 0, 2][:, None, None] * (C01 + C10)
-        D00 += D[:, 2, 2][:, None, None] * C11
+        val = self.ka/2/self.l0*(d(bc)**2+self.l0**2*np.sum(g*g, axis=1))
+        dissipated = np.dot(val, cm)
+        return dissipated
 
-        D01 = D[:, 0, 1][:, None, None] * C01
-        D01 += D[:, 1, 2][:, None, None] * C11
-        D01 += D[:, 0, 2][:, None, None] * C00
-        D01 += D[:, 2, 2][:, None, None] * C10
+    
+    def get_stored_energy(self, psi_s, d):
+        eps = 1e-10
 
-        D10 = D[:, 0, 1][:, None, None] * C10
-        D10 += D[:, 1, 2][:, None, None] * C11
-        D10 += D[:, 0, 2][:, None, None] * C00
-        D10 += D[:, 2, 2][:, None, None] * C01
-
-        D11 = D[:, 1, 1][:, None, None] * C11
-        D11 += D[:, 1, 2][:, None, None] * (C01 + C10)
-        D11 += D[:, 2, 2][:, None, None] * C00
-
-        cell = mesh.entity('cell')
-        shape = D00.shape
-        I = np.broadcast_to(cell[:, None, :], shape=shape)
-        J = np.broadcast_to(cell[:, :, None], shape=shape)
-
-        D00 = csr_matrix((D00.flat, (I.flat, J.flat)), shape=(NN, NN))
-        D01 = csr_matrix((D01.flat, (I.flat, J.flat)), shape=(NN, NN))
-        D10 = csr_matrix((D10.flat, (I.flat, J.flat)), shape=(NN, NN))
-        D11 = csr_matrix((D11.flat, (I.flat, J.flat)), shape=(NN, NN))
-
-        return bmat([[D00, D01], [D10, D11]], format='csr')
+        bc = np.array([1 / 3, 1 / 3, 1 / 3], dtype=np.float64)
+        c0 = (1 - d(bc)) ** 2 + eps
+        mesh = self.mesh
+        cm = mesh.entity_measure('cell')
+        val = c0*psi_s
+        stored = np.dot(val, cm)
+        return stored
 
 
-
+def recovery_estimate(mesh, d):
+    from fealpy.functionspace import LagrangeFiniteElementSpace
+    space0 = LagrangeFiniteElementSpace(mesh)
+    rgd = space0.grad_recovery(uh=d, method='simple')
+    eta = space0.integralalg.error(rgd.value, d.grad_value, power=2,
+            celltype=True)
+    return eta
 
 model = Brittle_Facture_model()
 
 domain = SquareWithCircleHoleDomain() 
-mesh = TriangleMesh.from_domain_distmesh(domain, 0.05, maxit=100)
+mesh = TriangleMesh.from_domain_distmesh(domain, 0.03, maxit=100)
 #mesh = model.init_mesh(n=5)
 
 GD = mesh.geo_dimension()
 NC = mesh.number_of_cells()
-NN = mesh.number_of_nodes()
 
 simulation = fracture_damage_integrator(mesh, model)
 space = LagrangeFESpace(mesh, p=1, doforder='sdofs')
 
 d = space.function()
 H = np.zeros(NC, dtype=np.float64)  # 分片常数
-#H = space.function()
 uh = space.function(dim=GD)
-du = space.function(dim=GD)
-dd = space.function()
 disp = model.top_boundary_disp()
-for i in range(len(disp)):
+
+stored_energy = np.zeros_like(disp)
+dissipated_energy = np.zeros_like(disp)
+
+for i in range(len(disp)-1):
+    NN = mesh.number_of_nodes()
     node  = mesh.entity('node') 
     isTNode = model.is_top_boundary(node)
-    uh[1, isTNode] = disp[i]
+    uh[1, isTNode] = disp[i+1]
     isTDof = np.r_['0', np.zeros(NN, dtype=np.bool_), isTNode]
-    print('disp:', disp[i])
+    du = space.function(dim=GD)
 
     k = 0
-    while k < 20:
+    while k < 100:
         print('i:', i)
         print('k:', k)
         
@@ -345,12 +334,10 @@ for i in range(len(disp)):
         ubform = BilinearForm(GD*(space, ))
 
         D = simulation.dsigma_depsilon(d, uh)
-        print('DDD:', D)
         integrator = ProvidesSymmetricTangentOperatorIntegrator(D, q=4)
         ubform.add_domain_integrator(integrator)
         ubform.assembly()
         A0 = ubform.get_matrix()
-#        AA = simulation.disp_matrix(D)
         R0 = -A0@uh.flat[:]
         
         ubc = DirichletBC(vspace, 0, threshold=model.is_inter_boundary)
@@ -371,18 +358,18 @@ for i in range(len(disp)):
         strain = simulation.strain(uh)
         phip, _ = simulation.strain_energy_density_decomposition(strain)
         H[:] = np.fmax(H, phip)
-        print('H:', H)
 
         # 计算相场模型
         dbform = BilinearForm(space)
-        dbform.add_domain_integrator(ScalarDiffusionIntegrator(c=model.Gc*model.l0))
-        dbform.add_domain_integrator(ScalarMassIntegrator(c=2*H))
-        dbform.add_domain_integrator(ScalarMassIntegrator(c=model.Gc/model.l0))
+        dbform.add_domain_integrator(ScalarDiffusionIntegrator(c=model.Gc*model.l0,
+            q=4))
+        dbform.add_domain_integrator(ScalarMassIntegrator(c=2*H+model.Gc/model.l0, q=4))
+#        dbform.add_domain_integrator(ScalarMassIntegrator(c=model.Gc/model.l0))
         dbform.assembly()
         A1 = dbform.get_matrix()
 
         lform = LinearForm(space)
-        lform.add_domain_integrator(ScalarSourceIntegrator(2*H))
+        lform.add_domain_integrator(ScalarSourceIntegrator(2*H, q=4))
         lform.assembly()
         R1 = lform.get_vector()
         R1 -= A1@d[:]
@@ -401,17 +388,61 @@ for i in range(len(disp)):
         print("error1:", error1)
         error = max(error0, error1)
         print("error:", error)
-        if error < 1e-9:
-            mesh.nodedata['damage'] = d
-            mesh.nodedata['uh'] = uh.T
-            fname = 'test' + str(i).zfill(10)  + '.vtu'
-            mesh.to_vtk(fname=fname)
+        if error < 1e-5:
             break
         k += 1
+    stored_energy[i+1] = simulation.get_stored_energy(phip, d)
+    dissipated_energy[i+1] = simulation.get_dissipated_energy(d)
 
+    mesh.nodedata['damage'] = d
+    mesh.nodedata['uh'] = uh.T
+    fname = 'test' + str(i).zfill(10)  + '.vtu'
+    mesh.to_vtk(fname=fname)
+    if i < len(disp) - 1:
+        cell2dof = mesh.cell_to_ipoint(p=1)
+        uh0c2f = uh[0, cell2dof]
+        uh1c2f = uh[1, cell2dof]
+        dc2f = d[cell2dof]
+        data = {'uh0':uh0c2f, 'uh1':uh1c2f, 'd':dc2f, 'H':H[cell2dof]}
+
+        # 恢复型后验误差估计
+        recovery = recovery_alg(space)
+        eta = recovery.recovery_estimate(d)
+#        option = mesh.adaptive_options(data=data, disp=False)
+#        mesh.adaptive(eta, options=option)
+
+        isMarkedCell = mark(eta, theta = 0.2)
+        option = mesh.bisect_options(data=data, disp=False)
+        mesh.bisect(isMarkedCell, options=option)
+      
+        # 更新加密后的空间
+        space = LagrangeFESpace(mesh, p=1, doforder='sdofs')
+        cell2dof = space.cell_to_dof()
+        NC = mesh.number_of_cells()
+        uh = space.function(dim=GD)
+        d = space.function()
+        H = np.zeros(NC, dtype=np.float64)  # 分片常数
+
+        uh[0, cell2dof.reshape(-1)] = option['data']['uh0'].reshape(-1)
+        uh[1, cell2dof.reshape(-1)] = option['data']['uh1'].reshape(-1)
+        d[cell2dof.reshape(-1)] = option['data']['d'].reshape(-1)
+        H[cell2dof.reshape(-1)] = option['data']['H'].reshape(-1)
 
 fig = plt.figure()
 axes = fig.add_subplot(111)
+NN = mesh.number_of_nodes()
 mesh.node += uh[:, :NN].T
 mesh.add_plot(axes)
 plt.show()
+
+plt.figure()
+plt.plot(disp, stored_energy, label='stored_energy', marker='o')
+plt.plot(disp, dissipated_energy, label='dissipated_energy', marker='s')
+plt.plot(disp, dissipated_energy+stored_energy, label='total_energy',
+        marker='x')
+plt.xlabel('disp')
+plt.ylabel('energy')
+plt.grid(True)
+plt.legend()
+plt.show()
+

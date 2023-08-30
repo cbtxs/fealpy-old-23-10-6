@@ -1,5 +1,7 @@
 import numpy as np
+
 from scipy.sparse import csr_matrix, spdiags, eye, bmat
+
 from typing import Optional, Union, Tuple, Callable, Any
 
 class DirichletBC():
@@ -16,10 +18,12 @@ class DirichletBC():
         self.threshold = threshold
         self.bctype = 'Dirichlet'
 
+
     def apply(self, 
             A: csr_matrix, 
             f: np.ndarray, 
-            uh: np.ndarray=None) -> Tuple[csr_matrix, np.ndarray]:
+            uh: np.ndarray=None, 
+            dflag: np.ndarray=None) -> Tuple[csr_matrix, np.ndarray]:
         """
         @brief 处理 Dirichlet 边界条件  
 
@@ -34,7 +38,7 @@ class DirichletBC():
             if uh is None:
                 uh = self.space[0].function(dim=GD)  
 
-            return self.apply_for_vspace_with_scalar_basis(A, f, uh)
+            return self.apply_for_vspace_with_scalar_basis(A, f, uh, dflag=dflag)
         else:
             # 标量函数空间或基是向量函数的向量函数空间
             gdof = self.space.number_of_global_dofs()
@@ -43,6 +47,7 @@ class DirichletBC():
                 uh = self.space.function(dim=GD)  
 
             return self.apply_for_other_space(A, f, uh)
+
 
     def apply_for_other_space(self, A, f, uh) -> Tuple[csr_matrix, np.ndarray]:
         """
@@ -63,7 +68,7 @@ class DirichletBC():
 
         return A, f 
 
-    def apply_for_vspace_with_scalar_basis(self, A, f, uh) -> Tuple[csr_matrix, np.ndarray]:
+    def apply_for_vspace_with_scalar_basis(self, A, f, uh, dflag=None):
         """
         @brief 处理基由标量函数组合而成的向量函数空间的 Dirichlet 边界条件
 
@@ -74,13 +79,14 @@ class DirichletBC():
         assert isinstance(space, tuple) and not isinstance(space[0], tuple)
 
         gD = self.gD
-        isDDof = space[0].boundary_interpolate(gD, uh, threshold=self.threshold) # isDDof.shape == uh.shape
+        if dflag is None:
+            dflag = space[0].boundary_interpolate(gD, uh, threshold=self.threshold)
         f = f - A@uh.flat # 注意这里不修改外界 f 的值
 
         bdIdx = np.zeros(A.shape[0], dtype=np.int_)
-        bdIdx[isDDof.flat] = 1
+        bdIdx[dflag.flat] = 1
         D0 = spdiags(1-bdIdx, 0, A.shape[0], A.shape[0])
         D1 = spdiags(bdIdx, 0, A.shape[0], A.shape[0])
         A = D0@A@D0 + D1
-        f[isDDof.flat] = uh[isDDof].flat
+        f[dflag.flat] = uh.ravel()[dflag.flat]
         return A, f 

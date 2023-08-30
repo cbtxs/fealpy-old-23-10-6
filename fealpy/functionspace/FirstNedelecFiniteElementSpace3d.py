@@ -394,7 +394,7 @@ class FirstNedelecFiniteElementSpace3d:
         face2edge = mesh.ds.face_to_edge()[index]
         n = mesh.face_unit_normal(index=index) 
 
-        if 1: #节点型自由度
+        if 0: #节点型自由度
             locEdge = np.array([[1, 2], [2, 0], [0, 1]], dtype=np.int_)
             point = 0.5*(np.sum(node[face[:, locEdge][index]], axis=-2)) #(NF, 3, 3)
             vec = mesh.edge_tangent()[face2edge] #(NF, 3, 3)
@@ -403,6 +403,7 @@ class FirstNedelecFiniteElementSpace3d:
 
             face2dof = self.dof.face_to_dof()[index]
             uh[face2dof] = np.sum(gval*np.cross(n[:, None, :], vec), axis=-1) 
+            #uh[face2dof] = np.linalg.norm(gval,axis=2) 
         else: #积分型自由度
             bcs, ws = self.integralalg.edgeintegrator.get_quadrature_points_and_weights()
             ps = mesh.bc_to_point(bcs)[:, face2edge]

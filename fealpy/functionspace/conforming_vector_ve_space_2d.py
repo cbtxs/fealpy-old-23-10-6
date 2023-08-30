@@ -10,14 +10,17 @@ class CVVEDof2d:
         self.p = p
         self.itype = self.mesh.itype
         self.cell2dof = self.cell_to_dof()
-    def is_boundary_dof(self):
+    def is_boundary_dof(self, threshold=None):
         mesh = self.mesh
         gdof = self.number_of_global_dofs()
         edge2dof = self.edge_to_dof()
-        
         isBdDof = np.zeros(gdof, dtype=np.bool_)
-        isBdEdge = mesh.ds.boundary_edge_flag()
-        isBdDof[edge2dof[isBdEdge]] = True   
+        idx = mesh.ds.boundary_edge_flag()
+
+        if threshold is not None:
+            bc = self.mesh.entity_barycenter('edge')
+            idx = threshold(bc)
+        isBdDof[edge2dof[idx]] = True   
         return isBdDof
     def edge_to_dof(self, index=np.s_[:]):
         e2p = self.mesh.edge_to_ipoint(self.p, index=index)
@@ -104,8 +107,8 @@ class CVVEDof2d:
             ipoint[egdof:,:] = (bc[:, None, :]+t1[None, :2, :]*h[:, :, None]).reshape(-1,GD)   
             return ipoint
 
-        bcs1 = self.mesh.multi_index_matrix(p-3)/(p-3)
-        bcs2 = (self.mesh.multi_index_matrix(p-1)/(p-1))[:-1, :]
+        bcs1 = self.mesh.multi_index_matrix(p-3, etype=2)/(p-3)
+        bcs2 = (self.mesh.multi_index_matrix(p-1, etype=2)/(p-1))[:-1, :]
         tri1 = bc[:, None, :]+t[None, :, :]*h[:, :, None]
         tri2 = bc[:, None, :]+t1[None, :, :]*h[:, :, None]
 
@@ -119,11 +122,7 @@ class CVVEDof2d:
         ipoint[egdof+(p-2)*(p-1)//2*NC:, :]= np.einsum('ij,kjm->kim',
                 bcs2, tri2).reshape(-1, GD)
         return ipoint
-
-
-
-        
-        
+       
         
 
 class ConformingVectorVESpace2d:
@@ -150,5 +149,44 @@ class ConformingVectorVESpace2d:
     def interpolation_points(self, index=np.s_[:]):
         return self.dof.interpolation_points()
 
+    def array(self, dim=None, dtype=np.float64):
+        gdof = self.number_of_global_dofs()
+        if dim is None:
+            shape = gdof
+        elif type(dim) is int:
+            shape = (gdof, dim)
+        elif type(dim) is tuple:
+            shape = (gdof, ) + dim
+        return np.zeros(shape, dtype=dtype)
 
 
+    def function(self, dim=None, array=None, dtype=np.float64):
+        return Function(self, dim=dim, array=array, coordtype='cartesian', dtype=dtype)
+
+
+
+    def edge_basis(self, x, x0):
+        """
+        @brief 虚单元基函数在边上lagrange插值
+        @param x0 是插值点
+        @param x 是已知点,此处值为1 其余为0
+        @example qf = GaussLobattoQuadrature(p + 2) # NQ
+            qf0 = GaussLobattoQuadrature(p+1)
+            phi = space.edge_basis(qf0.quadpts[:, 0], qf.quadpts[:, 0])
+        """
+
+        A = x[:, None] - x[None, :]
+        A[np.arange(len(A)), np.arange(len(A))] = 1.0
+        A = np.prod(A, axis=1)
+        val = np.zeros((len(x0), len(x)), dtype=np.float_)
+        for i in range(len(x)):
+            flag = np.ones(len(x), dtype=np.bool_)
+            flag[i] = False
+            val[:, i] = np.prod(x0[:, None] - x[flag][None, :], axis=1)/A[i]
+        return val
+
+
+
+
+        
+ 
