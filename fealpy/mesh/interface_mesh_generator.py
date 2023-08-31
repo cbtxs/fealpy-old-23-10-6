@@ -12,6 +12,7 @@ from .tetrahedron_mesh import TetrahedronMesh
 from .polyhedron_mesh import PolyhedronMesh
 from .triangle_mesh import TriangleMesh
 
+
 def msign(x):
     flag = np.sign(x)
     flag[np.abs(x) < 1e-8] = 0

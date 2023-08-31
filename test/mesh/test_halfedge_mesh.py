@@ -5,6 +5,7 @@ from fealpy.mesh import TriangleMesh, QuadrangleMesh, PolygonMesh
 from fealpy.mesh.halfedge_mesh import HalfEdgeMesh2d 
 from fealpy.mesh import HalfEdgeMesh2d as HM
 
+<<<<<<< .merge_file_tGfqoc
 <<<<<<< .merge_file_I7158C
 <<<<<<< .merge_file_zkOf8E
 mesh = QuadrangleMesh.from_box([0, 2, 0, 1], nx=2, ny=1)
@@ -35,6 +36,9 @@ def animation_plot():
 =======
 def animation_plot():
 >>>>>>> .merge_file_YfNnfn
+=======
+def animation_plot():
+>>>>>>> .merge_file_35t8Ff
     cell = np.array([[0,1,2,3],[1,4,5,2]],dtype = np.int_)
     node = np.array([[0,0],[1,0],[1,1],[0,1],[2,0],[2,1]], dtype = np.float_)
     mesh = QuadrangleMesh(node, cell)
@@ -42,6 +46,7 @@ def animation_plot():
     mesh.init_level_info()
     NE = mesh.ds.NE
 
+<<<<<<< .merge_file_tGfqoc
 <<<<<<< .merge_file_I7158C
 <<<<<<< .merge_file_zkOf8E
     r = 0.5
@@ -54,11 +59,15 @@ def animation_plot():
 =======
     r, h, N = 0.5, 5e-3, 10
 >>>>>>> .merge_file_YfNnfn
+=======
+    r, h, N = 0.5, 5e-3, 10
+>>>>>>> .merge_file_35t8Ff
     fig = plt.figure()
     axes = fig.gca()
     plt.ion()
     for i in range(N):
         c = np.array([i*(2/N), 0.8])
+<<<<<<< .merge_file_tGfqoc
 <<<<<<< .merge_file_I7158C
 <<<<<<< .merge_file_zkOf8E
         k=0
@@ -73,22 +82,28 @@ def animation_plot():
 =======
 =======
 >>>>>>> .merge_file_YfNnfn
+=======
+>>>>>>> .merge_file_35t8Ff
         for k in range(10):
             node = mesh.entity('node')
             halfedge = mesh.entity('halfedge')
             pre = halfedge[:, 3]
             flag = np.linalg.norm(node-c, axis=1)<r
             isMarkedHEdge = flag[halfedge[:, 0]]&(~flag[halfedge[pre, 0]])
+<<<<<<< .merge_file_tGfqoc
 <<<<<<< .merge_file_I7158C
 >>>>>>> .merge_file_68wUTl
 =======
 >>>>>>> .merge_file_YfNnfn
+=======
+>>>>>>> .merge_file_35t8Ff
             NC = mesh.number_of_cells()
             isMarkedCell = np.zeros(NC, dtype=np.bool_)
             isMarkedCell[halfedge[isMarkedHEdge, 1]] = True
             isMarkedCell = isMarkedCell & (mesh.cell_area()>h**2)
             if (~isMarkedCell).all():
                 break
+<<<<<<< .merge_file_tGfqoc
 <<<<<<< .merge_file_I7158C
 <<<<<<< .merge_file_zkOf8E
             mesh.refine_poly(isMarkedCell)
@@ -105,6 +120,8 @@ def animation_plot():
 =======
 =======
 >>>>>>> .merge_file_YfNnfn
+=======
+>>>>>>> .merge_file_35t8Ff
             print('第', i, '轮, 加密', k, '次')
             mesh.refine_poly(isMarkedCell)
 
@@ -113,14 +130,18 @@ def animation_plot():
             plt.pause(0.01)
 
         for k in range(10):
+<<<<<<< .merge_file_tGfqoc
 <<<<<<< .merge_file_I7158C
 >>>>>>> .merge_file_68wUTl
 =======
 >>>>>>> .merge_file_YfNnfn
+=======
+>>>>>>> .merge_file_35t8Ff
             halfedge = mesh.ds.halfedge
             pre = halfedge[:, 3]
             node = mesh.entity('node')
             flag = np.linalg.norm(node-c, axis=1)<r
+<<<<<<< .merge_file_tGfqoc
 <<<<<<< .merge_file_I7158C
 <<<<<<< .merge_file_zkOf8E
             flag1 = flag[halfedge[:, 0]].astype(int)
@@ -132,10 +153,14 @@ def animation_plot():
 =======
             isMarkedHEdge = flag[halfedge[:, 0]]&(~flag[halfedge[pre, 0]])
 >>>>>>> .merge_file_YfNnfn
+=======
+            isMarkedHEdge = flag[halfedge[:, 0]]&(~flag[halfedge[pre, 0]])
+>>>>>>> .merge_file_35t8Ff
             NC = mesh.number_of_cells()
             isMarkedCell = np.zeros(NC, dtype=np.bool_)
             isMarkedCell[halfedge[isMarkedHEdge, 1]] = True
             isMarkedCell = ~isMarkedCell & (mesh.cell_area()<0.5)
+<<<<<<< .merge_file_tGfqoc
 <<<<<<< .merge_file_I7158C
 <<<<<<< .merge_file_zkOf8E
 
@@ -147,14 +172,19 @@ def animation_plot():
 =======
 =======
 >>>>>>> .merge_file_YfNnfn
+=======
+>>>>>>> .merge_file_35t8Ff
             if (~isMarkedCell).all():
                 break
             mesh.coarsen_poly(isMarkedCell)
             print('第', i, '轮, 粗化', k, '次')
+<<<<<<< .merge_file_tGfqoc
 <<<<<<< .merge_file_I7158C
 >>>>>>> .merge_file_68wUTl
 =======
 >>>>>>> .merge_file_YfNnfn
+=======
+>>>>>>> .merge_file_35t8Ff
             plt.cla()
             mesh.add_plot(axes, linewidths = 0.4, aspect=0.5)
             plt.pause(0.01)
@@ -162,6 +192,7 @@ def animation_plot():
     plt.show()
 
 def circle_plot(plot=True):
+<<<<<<< .merge_file_tGfqoc
 <<<<<<< .merge_file_I7158C
 <<<<<<< .merge_file_zkOf8E
 =======
@@ -170,6 +201,9 @@ def circle_plot(plot=True):
 =======
     import time
 >>>>>>> .merge_file_YfNnfn
+=======
+    import time
+>>>>>>> .merge_file_35t8Ff
     cell = np.array([[0,1,2,3],[1,4,5,2]],dtype = np.int_)
     node = np.array([[0,0],[1,0],[1,1],[0,1],[2,0],[2,1]], dtype = np.float_)
     mesh = QuadrangleMesh(node, cell)
@@ -177,6 +211,7 @@ def circle_plot(plot=True):
     mesh.init_level_info()
     NE = mesh.ds.NE
 
+<<<<<<< .merge_file_tGfqoc
 <<<<<<< .merge_file_I7158C
 <<<<<<< .merge_file_zkOf8E
     r = 0.5
@@ -191,16 +226,21 @@ def circle_plot(plot=True):
 =======
 =======
 >>>>>>> .merge_file_YfNnfn
+=======
+>>>>>>> .merge_file_35t8Ff
     r, h, N = 0.5, 1e-3, 10
     fig = plt.figure()
     axes = fig.gca()
     c = np.array([2*(2/N), 0.8])
     while True:
         s = time.time()
+<<<<<<< .merge_file_tGfqoc
 <<<<<<< .merge_file_I7158C
 >>>>>>> .merge_file_68wUTl
 =======
 >>>>>>> .merge_file_YfNnfn
+=======
+>>>>>>> .merge_file_35t8Ff
         halfedge = mesh.ds.halfedge
         pre = halfedge[:, 3]
         node = mesh.entity('node')
@@ -215,6 +255,7 @@ def circle_plot(plot=True):
         if (~isMarkedCell).all():
             break
         mesh.refine_poly(isMarkedCell)
+<<<<<<< .merge_file_tGfqoc
 <<<<<<< .merge_file_I7158C
 <<<<<<< .merge_file_zkOf8E
         k+=1
@@ -226,6 +267,10 @@ def circle_plot(plot=True):
         e = time.time()
         print(e-s, "\n")
 >>>>>>> .merge_file_YfNnfn
+=======
+        e = time.time()
+        print(e-s, "\n")
+>>>>>>> .merge_file_35t8Ff
 
         mesh.add_plot(axes, linewidths = 0.4, aspect=0.5)
         #mesh.find_cell(axes, showindex=True)
@@ -233,6 +278,7 @@ def circle_plot(plot=True):
 
     plt.show()
 
+<<<<<<< .merge_file_tGfqoc
 <<<<<<< .merge_file_I7158C
 <<<<<<< .merge_file_zkOf8E
 
@@ -241,6 +287,8 @@ circle_plot()
 =======
 =======
 >>>>>>> .merge_file_YfNnfn
+=======
+>>>>>>> .merge_file_35t8Ff
 def test_simple():
     mesh = QuadrangleMesh.from_box([0, 2, 0, 1], nx=2, ny=1)
     #mesh = TriangleMesh.from_one_triangle()
@@ -268,10 +316,13 @@ def test_simple():
 
 animation_plot()
 #circle_plot()
+<<<<<<< .merge_file_tGfqoc
 <<<<<<< .merge_file_I7158C
 >>>>>>> .merge_file_68wUTl
 =======
 >>>>>>> .merge_file_YfNnfn
+=======
+>>>>>>> .merge_file_35t8Ff
 
 
 
