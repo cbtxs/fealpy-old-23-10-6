@@ -41,6 +41,7 @@ VectorRobinSourceIntegrator = VectorBoundarySourceIntegrator
 
 # others
 from .truss_structure_integrator import TrussStructureIntegrator
+from .beam_structure_integrator import BeamStructureIntegrator
 from .diffusion_integrator import DiffusionIntegrator
 from .vector_convection_integrator import VectorConvectionIntegrator
 from .vector_viscous_work_integrator import VectorViscousWorkIntegrator
@@ -52,4 +53,5 @@ from .vector_neumann_bc_integrator import VectorNeumannBCIntegrator
 from .scalar_neumann_bc_integrator import ScalarNeumannBCIntegrator
 
 from .dirichlet_bc import DirichletBC
+from .recovery_alg import recovery_alg
 
