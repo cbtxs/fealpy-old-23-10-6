@@ -47,26 +47,8 @@ class HalfEdgeMesh2d(Mesh, Plotable):
         这个类的核心数组都是动态数组， 可以根据网格实体数目的变化动态增加长度，
         理论上可有效减少内存开辟的次数。
 
-<<<<<<< .merge_file_huUNxP
-<<<<<<< .merge_file_qKxm91
-<<<<<<< .merge_file_wg8qDc
-<<<<<<< .merge_file_4QmRGm
-=======
         边界半边的对边是自身
 
->>>>>>> .merge_file_CFS4pX
-=======
-        边界半边的对边是自身
-
->>>>>>> .merge_file_n6LUPC
-=======
-        边界半边的对边是自身
-
->>>>>>> .merge_file_MeMDoy
-=======
-        边界半边的对边是自身
-
->>>>>>> .merge_file_r5J6pO
         Reference
         ---------
         [1] https://github.com/maciejkula/dynarray/blob/master/dynarray/dynamic_array.py
@@ -198,56 +180,15 @@ class HalfEdgeMesh2d(Mesh, Plotable):
         clevel = self.celldata['level']
         while True:
             NC = self.number_of_cells()
-<<<<<<< .merge_file_huUNxP
-<<<<<<< .merge_file_qKxm91
-<<<<<<< .merge_file_wg8qDc
-<<<<<<< .merge_file_4QmRGm
             NHE = self.ds.number_of_halfedges()
 
             end = halfedge[:, 0]
             start = halfedge[halfedge[:, 3], 0]
-=======
-=======
->>>>>>> .merge_file_n6LUPC
-=======
->>>>>>> .merge_file_MeMDoy
-=======
->>>>>>> .merge_file_r5J6pO
-            NE = self.number_of_edges()
-
-            end = halfedge[:, 0]
-            start = halfedge[halfedge[:, 4], 0]
-<<<<<<< .merge_file_huUNxP
-<<<<<<< .merge_file_qKxm91
-<<<<<<< .merge_file_wg8qDc
->>>>>>> .merge_file_CFS4pX
-=======
->>>>>>> .merge_file_n6LUPC
-=======
->>>>>>> .merge_file_MeMDoy
-=======
->>>>>>> .merge_file_r5J6pO
             vector = node[end] - node[start]#所有边的方向
             vectornex = vector[halfedge[:, 2]]#所有边的下一个边的方向
 
             angle0 = angle(vectornex, -vector)#所有边的反方向与下一个边的角度
-<<<<<<< .merge_file_huUNxP
-<<<<<<< .merge_file_qKxm91
-<<<<<<< .merge_file_wg8qDc
-<<<<<<< .merge_file_4QmRGm
             badHEdge, = np.where(angle0 > np.pi)#夹角大于170度的半边
-=======
-            badHEdge, = np.where(angle0 > np.pi*17/18)#夹角大于170度的半边
->>>>>>> .merge_file_CFS4pX
-=======
-            badHEdge, = np.where(angle0 > np.pi*17/18)#夹角大于170度的半边
->>>>>>> .merge_file_n6LUPC
-=======
-            badHEdge, = np.where(angle0 > np.pi*17/18)#夹角大于170度的半边
->>>>>>> .merge_file_MeMDoy
-=======
-            badHEdge, = np.where(angle0 > np.pi*17/18)#夹角大于170度的半边
->>>>>>> .merge_file_r5J6pO
             badCell, idx= np.unique(halfedge[badHEdge, 1], return_index=True)#每个单元每次只处理中的一个
             badHEdge = badHEdge[idx]#现在坏半边的单元都不同
             badNode = halfedge[badHEdge, 0]
@@ -277,32 +218,12 @@ class HalfEdgeMesh2d(Mesh, Plotable):
             halfedgeNew[:NE1, 1] = halfedge[badHEdge, 1].copy()
             halfedgeNew[:NE1, 2] = halfedge[goodHEdge, 2].copy()
             halfedgeNew[:NE1, 3] = badHEdge.copy()
-<<<<<<< .merge_file_huUNxP
-<<<<<<< .merge_file_qKxm91
-<<<<<<< .merge_file_wg8qDc
-<<<<<<< .merge_file_4QmRGm
             halfedgeNew[:NE1, 4] = np.arange(NHE+NE1, NHE+NE1*2)
-=======
-            halfedgeNew[:NE1, 4] = np.arange(NE*2+NE1, NE*2+NE1*2)
->>>>>>> .merge_file_CFS4pX
-=======
-            halfedgeNew[:NE1, 4] = np.arange(NE*2+NE1, NE*2+NE1*2)
->>>>>>> .merge_file_n6LUPC
-=======
-            halfedgeNew[:NE1, 4] = np.arange(NE*2+NE1, NE*2+NE1*2)
->>>>>>> .merge_file_MeMDoy
-=======
-            halfedgeNew[:NE1, 4] = np.arange(NE*2+NE1, NE*2+NE1*2)
->>>>>>> .merge_file_r5J6pO
 
             halfedgeNew[NE1:, 0] = halfedge[badHEdge, 0].copy()
             halfedgeNew[NE1:, 1] = np.arange(NC, NC+NE1)
             halfedgeNew[NE1:, 2] = halfedge[badHEdge, 2].copy()
             halfedgeNew[NE1:, 3] = goodHEdge.copy()
-<<<<<<< .merge_file_huUNxP
-<<<<<<< .merge_file_qKxm91
-<<<<<<< .merge_file_wg8qDc
-<<<<<<< .merge_file_4QmRGm
             halfedgeNew[NE1:, 4] = np.arange(NHE, NHE+NE1)
 
             halfedge[halfedge[goodHEdge, 2], 3] = np.arange(NHE, NHE+NE1)
@@ -315,35 +236,6 @@ class HalfEdgeMesh2d(Mesh, Plotable):
                 halfedge[nex[isNotOK], 1] = np.arange(NC, NC+NE1)[isNotOK]
                 nex = halfedge[nex, 2]
                 flag = (nex==np.arange(NHE+NE1, NHE+NE1*2)) & isNotOK
-=======
-=======
->>>>>>> .merge_file_n6LUPC
-=======
->>>>>>> .merge_file_MeMDoy
-=======
->>>>>>> .merge_file_r5J6pO
-            halfedgeNew[NE1:, 4] = np.arange(NE*2, NE*2+NE1)
-
-            halfedge[halfedge[goodHEdge, 2], 3] = np.arange(NE*2, NE*2+NE1)
-            halfedge[halfedge[badHEdge, 2], 3] = np.arange(NE*2+NE1, NE*2+NE1*2)
-            halfedge[badHEdge, 2] = np.arange(NE*2, NE*2+NE1)
-            halfedge[goodHEdge, 2] = np.arange(NE*2+NE1, NE*2+NE1*2)
-            isNotOK = np.ones(NE1, dtype=np.bool_)
-            nex = halfedge[-NE1:, 2]
-            while isNotOK.any():
-                halfedge[nex[isNotOK], 1] = np.arange(NC, NC+NE1)[isNotOK]
-                nex = halfedge[nex, 2]
-                flag = (nex==np.arange(NE*2+NE1, NE*2+NE1*2)) & isNotOK
-<<<<<<< .merge_file_huUNxP
-<<<<<<< .merge_file_qKxm91
-<<<<<<< .merge_file_wg8qDc
->>>>>>> .merge_file_CFS4pX
-=======
->>>>>>> .merge_file_n6LUPC
-=======
->>>>>>> .merge_file_MeMDoy
-=======
->>>>>>> .merge_file_r5J6pO
                 isNotOK[flag] = False
 
             #单元层
@@ -639,26 +531,7 @@ class HalfEdgeMesh2d(Mesh, Plotable):
 
     def cell_area(self, index=np.s_[:]):
         """
-<<<<<<< .merge_file_huUNxP
-<<<<<<< .merge_file_qKxm91
-<<<<<<< .merge_file_wg8qDc
-<<<<<<< .merge_file_4QmRGm
-
-        Notes
-        -----
-        计算单元的面积
-=======
         @brief 计算单元的面积
->>>>>>> .merge_file_CFS4pX
-=======
-        @brief 计算单元的面积
->>>>>>> .merge_file_n6LUPC
-=======
-        @brief 计算单元的面积
->>>>>>> .merge_file_MeMDoy
-=======
-        @brief 计算单元的面积
->>>>>>> .merge_file_r5J6pO
         """
         if self.ds.NV in {None, 4}:
             NC = self.number_of_cells()
@@ -690,62 +563,13 @@ class HalfEdgeMesh2d(Mesh, Plotable):
                 a = np.sqrt(np.square(nv).sum(axis=1))/2.0
             return a
 
-<<<<<<< .merge_file_huUNxP
-<<<<<<< .merge_file_qKxm91
-<<<<<<< .merge_file_wg8qDc
-<<<<<<< .merge_file_4QmRGm
-    def cell_norm(self, index): #TODO
-        hcell = self.ds.hcell[index]
-
-    def cell_barycenter(self, index=np.s_[:]):
-=======
     def cell_barycenter(self, index=np.s_[:]): #TODO 三维
->>>>>>> .merge_file_CFS4pX
-=======
-    def cell_barycenter(self, index=np.s_[:]): #TODO 三维
->>>>>>> .merge_file_n6LUPC
-=======
-    def cell_barycenter(self, index=np.s_[:]): #TODO 三维
->>>>>>> .merge_file_MeMDoy
-=======
-    def cell_barycenter(self, index=np.s_[:]): #TODO 三维
->>>>>>> .merge_file_r5J6pO
         """
         @brief 单元的重心。
 
         """
         GD = self.geo_dimension()
         NC = self.number_of_cells()
-<<<<<<< .merge_file_huUNxP
-<<<<<<< .merge_file_qKxm91
-<<<<<<< .merge_file_wg8qDc
-<<<<<<< .merge_file_4QmRGm
-        node = self.entity('node') # DynamicArray
-        halfedge = self.entity('halfedge') # DynamicArray
-
-        e0 = halfedge[halfedge[:, 3], 0]
-        e1 = halfedge[:, 0]
-        if GD==2:
-            w = np.array([[0, -1], [1, 0]], dtype=np.int)
-            v= (node[e1] - node[e0])@w
-        else: #TODO
-            pass
-        val = np.sum(v*node[e0], axis=1)
-        ec = val.reshape(-1, 1)*(node[e1]+node[e0])/2
-
-        a = np.zeros(NC, dtype=self.ftype)
-        c = np.zeros((NC, GD), dtype=self.ftype)
-        np.add.at(a, halfedge[:, 1], val)
-        np.add.at(c, halfedge[:, 1], ec)
-        a /=2
-        c /=3*a.reshape(-1, 1)
-=======
-=======
->>>>>>> .merge_file_n6LUPC
-=======
->>>>>>> .merge_file_MeMDoy
-=======
->>>>>>> .merge_file_r5J6pO
 
         node = self.entity('node') # DynamicArray
         halfedge = self.entity('halfedge') # DynamicArray
@@ -767,16 +591,6 @@ class HalfEdgeMesh2d(Mesh, Plotable):
         np.add.at(c, halfedge[hflag, 1], ec)
         a[index] /=2
         c[index] /=3*a[index, None]
-<<<<<<< .merge_file_huUNxP
-<<<<<<< .merge_file_qKxm91
-<<<<<<< .merge_file_wg8qDc
->>>>>>> .merge_file_CFS4pX
-=======
->>>>>>> .merge_file_n6LUPC
-=======
->>>>>>> .merge_file_MeMDoy
-=======
->>>>>>> .merge_file_r5J6pO
         return c[index]
 
     def delete_entity(self, isMarked, etype='node'):
@@ -1127,19 +941,6 @@ class HalfEdgeMesh2d(Mesh, Plotable):
         hlevel   = self.halfedgedata['level']
         halfedge = self.entity('halfedge')
         isMainHEdge = self.ds.main_halfedge_flag()
-<<<<<<< .merge_file_huUNxP
-<<<<<<< .merge_file_qKxm91
-<<<<<<< .merge_file_wg8qDc
-<<<<<<< .merge_file_4QmRGm
-        NC = self.number_of_cells()
-=======
->>>>>>> .merge_file_CFS4pX
-=======
->>>>>>> .merge_file_n6LUPC
-=======
->>>>>>> .merge_file_MeMDoy
-=======
->>>>>>> .merge_file_r5J6pO
 
         isMarkedCell = np.ones(NC, dtype=np.bool_) if isMarkedCell is None else isMarkedCell
         isMarkedHEdge = self.mark_halfedge(isMarkedCell, method='poly')
@@ -1176,51 +977,15 @@ class HalfEdgeMesh2d(Mesh, Plotable):
 
         # 保证相邻单元层数小于等于1
         while True:
-<<<<<<< .merge_file_huUNxP
-<<<<<<< .merge_file_qKxm91
-<<<<<<< .merge_file_wg8qDc
-<<<<<<< .merge_file_4QmRGm
-            isRNode = np.ones(NN, dtype=np.bool_)
-            flag = (hlevel == hlevel[halfedge[:, 4]])&(clevel[halfedge[:, 1]]>0)&(halfedge[:, 4]!=np.arange(NHE))
-=======
             opp = halfedge[:, 4]
             isRNode = np.ones(NN, dtype=np.bool_)
             flag = (hlevel == hlevel[opp])&(clevel[halfedge[:, 1]]>0)&(opp!=np.arange(NHE))
->>>>>>> .merge_file_CFS4pX
-=======
-            opp = halfedge[:, 4]
-            isRNode = np.ones(NN, dtype=np.bool_)
-            flag = (hlevel == hlevel[opp])&(clevel[halfedge[:, 1]]>0)&(opp!=np.arange(NHE))
->>>>>>> .merge_file_n6LUPC
-=======
-            opp = halfedge[:, 4]
-            isRNode = np.ones(NN, dtype=np.bool_)
-            flag = (hlevel == hlevel[opp])&(clevel[halfedge[:, 1]]>0)&(opp!=np.arange(NHE))
->>>>>>> .merge_file_MeMDoy
-=======
-            opp = halfedge[:, 4]
-            isRNode = np.ones(NN, dtype=np.bool_)
-            flag = (hlevel == hlevel[opp])&(clevel[halfedge[:, 1]]>0)&(opp!=np.arange(NHE))
->>>>>>> .merge_file_r5J6pO
             flag = flag & isMarkedCell[halfedge[:, 1]]
             np.logical_and.at(isRNode, halfedge[:, 0], flag)
             flag = isRNode[halfedge[:, 0]]
             isMarkedCell[:] = False
             isMarkedCell[halfedge[flag, 1]] = True
 
-<<<<<<< .merge_file_huUNxP
-<<<<<<< .merge_file_qKxm91
-<<<<<<< .merge_file_wg8qDc
-<<<<<<< .merge_file_4QmRGm
-            opp = halfedge[:, 4]
-=======
->>>>>>> .merge_file_CFS4pX
-=======
->>>>>>> .merge_file_n6LUPC
-=======
->>>>>>> .merge_file_MeMDoy
-=======
->>>>>>> .merge_file_r5J6pO
             isMarked = (isMarkedCell[halfedge[:, 1]]) & (~isMarkedCell[halfedge[opp, 1]])
             isMarked = isMarked & (clevel[halfedge[opp, 1]]>clevel[halfedge[:, 1]])
             isMarkedCell[halfedge[isMarked, 1]] = False
@@ -2369,10 +2134,6 @@ class HalfEdgeMesh2d(Mesh, Plotable):
                     break
                 isMarkedCell = (options['numrefine'] < 0)
 
-<<<<<<< .merge_file_huUNxP
-<<<<<<< .merge_file_qKxm91
-<<<<<<< .merge_file_wg8qDc
-<<<<<<< .merge_file_4QmRGm
     def adaptive_refine(self, isMarkedCell, method="poly", options={}):
         if method=='nvb':
             self.refine_triangle_nvb(isMarkedCell, options=options)
@@ -2382,36 +2143,6 @@ class HalfEdgeMesh2d(Mesh, Plotable):
             self.refine_quad(isMarkedCell, options=options)
         elif method=='poly':
             self.refine_poly(isMarkedCell, options=options)
-=======
-=======
->>>>>>> .merge_file_n6LUPC
-=======
->>>>>>> .merge_file_MeMDoy
-=======
->>>>>>> .merge_file_r5J6pO
-    def adaptive_refine(self, isMarkedCell, method="nvb", options={}):
-        cstart = self.ds.cellstart
-        NC = self.number_of_all_cells()
-        isMarkedCell0 = np.zeros(NC, dtype=np.bool_)
-        isMarkedCell0[cstart:] = isMarkedCell
-        if method=='nvb':
-            self.refine_triangle_nvb(isMarkedCell0, options=options)
-        elif method=='rg':
-            self.refine_triangle_rg(isMarkedCell0, options=options)
-        elif method=='quad':
-            self.refine_quad(isMarkedCell0, options=options)
-        elif method=='poly':
-            self.refine_poly(isMarkedCell0, options=options)
-<<<<<<< .merge_file_huUNxP
-<<<<<<< .merge_file_qKxm91
-<<<<<<< .merge_file_wg8qDc
->>>>>>> .merge_file_CFS4pX
-=======
->>>>>>> .merge_file_n6LUPC
-=======
->>>>>>> .merge_file_MeMDoy
-=======
->>>>>>> .merge_file_r5J6pO
 
     def adaptive_coarsen(self, isMarkedCell, method="nvb", options={}):
         cstart = self.ds.cellstart
@@ -2613,23 +2344,7 @@ class HalfEdgeMesh2d(Mesh, Plotable):
         NC = self.number_of_cells()
 
         node = self.entity('node')
-<<<<<<< .merge_file_huUNxP
-<<<<<<< .merge_file_qKxm91
-<<<<<<< .merge_file_wg8qDc
-<<<<<<< .merge_file_4QmRGm
-        cells = self.ds.cell_to_node()
-=======
         cell, cellLoc = self.ds.cell_to_node()
->>>>>>> .merge_file_CFS4pX
-=======
-        cell, cellLoc = self.ds.cell_to_node()
->>>>>>> .merge_file_n6LUPC
-=======
-        cell, cellLoc = self.ds.cell_to_node()
->>>>>>> .merge_file_MeMDoy
-=======
-        cell, cellLoc = self.ds.cell_to_node()
->>>>>>> .merge_file_r5J6pO
 
         if node.shape[1] == 2:
             node = np.c_[node, np.zeros((len(node), 1), dtype=np.float_)]
@@ -2639,22 +2354,7 @@ class HalfEdgeMesh2d(Mesh, Plotable):
         uGrid = vtk.vtkUnstructuredGrid()
         uGrid.SetPoints(points)
 
-<<<<<<< .merge_file_huUNxP
-<<<<<<< .merge_file_qKxm91
-<<<<<<< .merge_file_wg8qDc
-<<<<<<< .merge_file_4QmRGm
-=======
         cells = np.split(cell, cellLoc[1:-1])
->>>>>>> .merge_file_CFS4pX
-=======
-        cells = np.split(cell, cellLoc[1:-1])
->>>>>>> .merge_file_n6LUPC
-=======
-        cells = np.split(cell, cellLoc[1:-1])
->>>>>>> .merge_file_MeMDoy
-=======
-        cells = np.split(cell, cellLoc[1:-1])
->>>>>>> .merge_file_r5J6pO
         vtk_cells = vtk.vtkCellArray()
         for c in cells:
             vtk_cell = vtk.vtkPolygon()
@@ -3385,23 +3085,7 @@ class HalfEdgeMesh2dDataStructure():
     def boundary_edge_flag(self):
         halfedge =  self.halfedge
         hedge = self.hedge
-<<<<<<< .merge_file_huUNxP
-<<<<<<< .merge_file_qKxm91
-<<<<<<< .merge_file_wg8qDc
-<<<<<<< .merge_file_4QmRGm
-        isBdEdge = hedge == halfedge[hedge, 4] 
-=======
         isBdEdge = hedge[:] == halfedge[hedge, 4] 
->>>>>>> .merge_file_CFS4pX
-=======
-        isBdEdge = hedge[:] == halfedge[hedge, 4] 
->>>>>>> .merge_file_n6LUPC
-=======
-        isBdEdge = hedge[:] == halfedge[hedge, 4] 
->>>>>>> .merge_file_MeMDoy
-=======
-        isBdEdge = hedge[:] == halfedge[hedge, 4] 
->>>>>>> .merge_file_r5J6pO
         return isBdEdge 
 
     def boundary_cell_flag(self):
