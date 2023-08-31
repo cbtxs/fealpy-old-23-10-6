@@ -72,6 +72,7 @@ def find_cut_point(phi, p0, p1):
         isRight[:] = False
     return cutPoint
 
+
 def interfacemesh2d(box, phi, n):
     """ Generate a interface-fitted mesh 
 
