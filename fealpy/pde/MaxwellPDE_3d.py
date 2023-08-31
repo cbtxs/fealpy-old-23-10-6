@@ -103,7 +103,7 @@ class MaxwellPDE():
     @cartesian
     def dirichlet(self, p, n):
         val = self.solution(p)
-        return val
+        return np.cross(n, val)
 
     @cartesian
     def neumann(self, p, n):

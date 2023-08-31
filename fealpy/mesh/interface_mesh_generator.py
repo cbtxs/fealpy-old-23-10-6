@@ -12,7 +12,6 @@ from .tetrahedron_mesh import TetrahedronMesh
 from .polyhedron_mesh import PolyhedronMesh
 from .triangle_mesh import TriangleMesh
 
-
 def msign(x):
     flag = np.sign(x)
     flag[np.abs(x) < 1e-8] = 0
@@ -72,7 +71,6 @@ def find_cut_point(phi, p0, p1):
         isLeft[:] = False
         isRight[:] = False
     return cutPoint
-
 
 def interfacemesh2d(box, phi, n):
     """ Generate a interface-fitted mesh 
