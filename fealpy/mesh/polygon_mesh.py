@@ -100,7 +100,6 @@ class PolygonMesh(Mesh, Plotable):
         np.add.at(a, edge2cell[isInEdge, 1], -val[isInEdge])
 
         a /= 2.0
-
         return a[index]
 
     def bc_to_point(self, bc: NDArray, etype: Union[int, str]='cell',

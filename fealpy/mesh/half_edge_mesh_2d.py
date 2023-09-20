@@ -106,7 +106,6 @@ class HalfEdgeMesh2d(Mesh, Plotable):
             edge2cell = mesh.ds.edge_to_cell()
             isInEdge = edge2cell[:, 0] != edge2cell[:, 1]
 
-
             halfedge = np.zeros((2*NE, 5), dtype=mesh.itype)
             halfedge[:, 0] = edge.flat
 
@@ -141,7 +140,7 @@ class HalfEdgeMesh2d(Mesh, Plotable):
         else:
             newMesh =  cls(mesh.node.copy(), mesh.ds.subdomain.copy(), mesh.ds.halfedge.copy())
             newMesh.celldata['level'][:] = mesh.celldata['level']
-            newMesh.nodedata['level'][:] = mesh.nodedata['level']
+            #newMesh.nodedata['level'][:] = mesh.nodedata['level']
             newMesh.halfedge['level'][:] = mesh.halfedgedata['level']
             return newMesh
 
@@ -204,7 +203,7 @@ class HalfEdgeMesh2d(Mesh, Plotable):
 
         self.halfedgedata['level'] = DynamicArray((2*NE, ), val=0,dtype=np.int_)
         self.celldata['level'] = DynamicArray((NC, ), val=0, dtype=np.int_) 
-        self.nodedata['level'] = DynamicArray((NN, ), val=0, dtype=np.int_)
+        #self.nodedata['level'] = DynamicArray((NN, ), val=0, dtype=np.int_)
 
         # 如果单元的角度大于 170 度， 设对应的半边层数为 1
         node = self.node
@@ -453,11 +452,11 @@ class HalfEdgeMesh2d(Mesh, Plotable):
             p = np.einsum('...j, ijk->...ik', bc, node[entity])
         return p
 
-    def entity(self, etype=2):
+    def entity(self, etype=2, index=np.s_[:]):
         if etype in {'cell', 2}:
-            return self.ds.cell_to_node()
+            return self.ds.cell_to_node()[index]
         elif etype in {'edge', 'face', 1}:
-            return self.ds.edge_to_node()
+            return self.ds.edge_to_node()[index]
         elif etype in {'halfedge'}:
             return self.ds.halfedge # DynamicArray
         elif etype in {'node', 0}:
@@ -477,6 +476,12 @@ class HalfEdgeMesh2d(Mesh, Plotable):
             return 0
         else:
             raise ValueError(f"Invalid entity type '{etype}'.")
+
+    def entity_measure(self, etype='cell', index=np.s_[:]):
+        if etype=='cell':
+            return self.cell_area(index)
+        elif etype in ['edge', 'face']:
+            return self.edge_length(index)
 
     def entity_barycenter(self, etype='cell', index=np.s_[:]):
         node = self.entity('node')
@@ -617,7 +622,6 @@ class HalfEdgeMesh2d(Mesh, Plotable):
     def mark_halfedge(self, isMarkedCell, method='poly'):
         cstart = self.ds.cellstart
         clevel = self.celldata['level'] # 注意这里是所有的单元的层信息
-        nlevel = self.nodedata['level']
         hlevel = self.halfedgedata['level']
         halfedge = self.entity('halfedge')
         if method == 'poly':
@@ -707,8 +711,8 @@ class HalfEdgeMesh2d(Mesh, Plotable):
         NE = self.number_of_edges()
 
         hlevel = self.halfedgedata['level']
-        halfedge = self.entity('halfedge')
-        node = self.entity('node')
+        halfedge = self.ds.halfedge
+        node = self.node
         hedge = self.ds.hedge
         subdomain = self.ds.subdomain
         isMainHEdge = self.ds.main_halfedge_flag()
@@ -2298,6 +2302,7 @@ class HalfEdgeMesh2d(Mesh, Plotable):
             nodedata = self.nodedata
             for key, val in nodedata.items():
                 if val is not None:
+                    val = val[:]
                     if len(val.shape) == 2 and val.shape[1] == 2:
                         shape = (val.shape[0], 3)
                         val1 = np.zeros(shape, dtype=val.dtype)
@@ -2573,6 +2578,12 @@ class HalfEdgeMesh2dDataStructure():
         self.hedge[flag] = halfedge[self.hedge[flag], 4]
 
         self.NV = NV
+
+    def number_of_edges(self):
+        return len(self.halfedge)//2
+
+    def number_of_cells(self):
+        return self.number_of_all_cells()-self.cellstart
 
     def number_of_all_cells(self):
         return len(self.subdomain)

@@ -12,7 +12,6 @@ from .tetrahedron_mesh import TetrahedronMesh
 from .polyhedron_mesh import PolyhedronMesh
 from .triangle_mesh import TriangleMesh
 
-
 def msign(x):
     flag = np.sign(x)
     flag[np.abs(x) < 1e-8] = 0
@@ -73,7 +72,6 @@ def find_cut_point(phi, p0, p1):
         isRight[:] = False
     return cutPoint
 
-
 def interfacemesh2d(box, phi, n):
     """ Generate a interface-fitted mesh 
 
@@ -113,7 +111,7 @@ def interfacemesh2d(box, phi, n):
     # phiValue[np.abs(phiValue) < 0.1*h**2] = 0.0
     phiSign = np.sign(phiValue)
 
-    # Step 1: find the nodes near interface
+    # Step 1: find the nodes 4ar interface
     edge = mesh.ds.edge
     isCutEdge = phiSign[edge[:, 0]] * phiSign[edge[:, 1]] < 0
     e0 = node[edge[isCutEdge, 0]]
@@ -152,7 +150,6 @@ def interfacemesh2d(box, phi, n):
     tri = interfaceNodeIdx[tri]
 
     # Get the final mesh in PolygonMesh 
-
     NS = np.sum(~isInterfaceCell)
     NT = tri.shape[0]
     pnode = np.concatenate((node, cutNode, auxNode), axis=0)
