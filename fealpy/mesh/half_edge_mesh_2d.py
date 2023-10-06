@@ -2277,7 +2277,7 @@ class HalfEdgeMesh2d(Mesh, Plotable):
         NC = self.number_of_cells()
 
         node = self.entity('node')
-        cell, cellLoc = self.ds.cell_to_node()
+        cells = self.ds.cell_to_node()
 
         if node.shape[1] == 2:
             node = np.c_[node, np.zeros((len(node), 1), dtype=np.float_)]
@@ -2287,7 +2287,6 @@ class HalfEdgeMesh2d(Mesh, Plotable):
         uGrid = vtk.vtkUnstructuredGrid()
         uGrid.SetPoints(points)
 
-        cells = np.split(cell, cellLoc[1:-1])
         vtk_cells = vtk.vtkCellArray()
         for c in cells:
             vtk_cell = vtk.vtkPolygon()
@@ -2531,6 +2530,7 @@ class HalfEdgeMesh2d(Mesh, Plotable):
         print('cellLocation:', cellLocation)
         cell2edge, cellLocation = self.ds.cell_to_edge()
         print("cell2edge:", cell2edge)
+HalfEdgeMesh2d.set_ploter('polygon2d')
 
 class HalfEdgeMesh2dDataStructure():
     def __init__(self, halfedge, subdomain, NN=None, NV=None):
@@ -2652,7 +2652,8 @@ class HalfEdgeMesh2dDataStructure():
                cell2node[idx[isNotOK]] = halfedge[current[isNotOK], 0]
                current[isNotOK] = halfedge[current[isNotOK], 2]
                isNotOK = (NV0 < NV)
-            return cell2node, cellLocation
+            #return cell2node, cellLocation
+            return np.hsplit(cell2node, cellLocation[1:-1])
         elif self.NV == 3: # tri mesh
             cell2node = np.zeros([NC, 3], dtype = np.int_)
             current = halfedge[self.hcell[cstart:], 2]

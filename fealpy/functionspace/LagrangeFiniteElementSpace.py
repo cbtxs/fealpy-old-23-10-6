@@ -2,7 +2,7 @@ import numpy as np
 from scipy.sparse import coo_matrix, csr_matrix, csc_matrix, spdiags, bmat
 from scipy.sparse.linalg import spsolve
 
-from ..decorator import barycentric
+from ..decorator import barycentric, cartesian
 
 from .Function import Function
 
@@ -103,7 +103,6 @@ class LagrangeFiniteElementSpace():
             return self.dof.number_of_local_dofs(doftype=doftype)
         elif self.spacetype == 'D':
             return self.dof.number_of_local_dofs()
-
 
     def interpolation_points(self):
         return self.dof.interpolation_points()
@@ -563,6 +562,22 @@ class LagrangeFiniteElementSpace():
         val = np.einsum(s1, phi, uh[e2d])
         return val
 
+    @cartesian
+    def function_value(self, uh, points, loc=None):
+        """
+        @brief 计算被给有限元函数的在 cartesian 坐标 points 处的函数值
+               注意，要求网格具有 find_node 函数
+        @param points: (NP, 2)
+        """
+        assert hasattr(self.mesh, 'find_point_in_triangle_mesh')
+        loc, bc = self.mesh.find_point_in_triangle_mesh(points, loc) #bc : (NP, 3)
+
+        TD = points.shape[-1]
+        phi = self.basis(bc) #(NP, ldof)
+        e2d = uh.space.dof.entity_to_dof(etype=TD)[loc] #(NP, ldof)
+        val = np.sum(phi[..., 0, :]*uh[e2d], axis=-1)
+        return loc, val 
+
     @barycentric
     def grad_value(self, uh, bc, index=np.s_[:]):
         """
@@ -611,6 +626,23 @@ class LagrangeFiniteElementSpace():
             return self.function(dim=dim, array=uI, dtype=uI.dtype)
         else:
             return self.function(dim=dim, array=uI, dtype=dtype)
+
+    def interpolation_fe_function(self, uh, dim=None, dtype=None):
+        """
+        @brief 对有限元函数 uh 进行插值 
+        """
+        assert callable(uh)
+
+        cell2dof = self.dof.cell2dof
+        ips = self.interpolation_points()[cell2dof] #(NC, ldof, 3)
+        uI = np.zeros(ips.shape[:-1], dtype=self.ftype)
+        loc, _ = uh.mesh.find_point_in_triangle_mesh(self.mesh.entity_barycenter("cell"))
+        for i in range(ips.shape[1]):
+            loc, uI[:, i] = uh.space.function_value(uh, ips[:, i], loc)
+
+        uI0 = self.function()
+        uI0[cell2dof] = uI
+        return uI0 
 
     def linear_interpolation_matrix(self):
         """
